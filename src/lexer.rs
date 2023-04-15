@@ -42,6 +42,7 @@ pub enum Token {
     CloseParen,
     OpenBrace,
     CloseBrace,
+    Comma,
 
     Print,
     Eof,
@@ -172,6 +173,10 @@ impl<'a> Lexer<'a> {
                     self.input.next();
                     return_token = Some(Token::OpenBrace);
                 }
+                ',' => {
+                    self.input.next();
+                    return_token = Some(Token::Comma);
+                }
                 '}' => {
                     self.input.next();
                     return_token = Some(Token::CloseBrace);
@@ -210,122 +215,118 @@ impl<'a> Iterator for Lexer<'a> {
 mod tests {
     use super::*;
 
+    fn lexer_from_str(input: &str) -> Lexer{
+        Lexer::new(input)
+    }
+
     /// Run tests for all the individual tokens
     #[test]
     fn test_let_token() {
-        let input = "let";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("let");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Let);
     }
 
     #[test]
     fn test_func_token() {
-        let input = "func";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("func");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Func);
     }
 
     #[test]
     fn test_print_token() {
-        let input = "print";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("print");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Print);
     }
 
     #[test]
     fn test_identifier_token() {
-        let input = "foo";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("foo");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Identifier("foo".to_string()));
     }
 
     #[test]
     fn test_number_token() {
-        let input = "number";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("number");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Number);
     }
 
     #[test]
     fn test_number_literal_token() {
-        let input = "42";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("42");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::NumberLiteral(42));
     }
     #[test]
     fn test_plus_token() {
-        let input = "+";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("+");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Plus);
     }
 
     #[test]
     fn test_assignment_token() {
-        let input = "=";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("=");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Assignment);
     }
 
     #[test]
     fn test_open_paren_token() {
-        let input = "(";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("(");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::OpenParen);
     }
 
     #[test]
     fn test_close_paren_token() {
-        let input = ")";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str(")");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::CloseParen);
     }
 
     #[test]
     fn test_open_brace_token() {
-        let input = "{";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("{");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::OpenBrace);
     }
 
     #[test]
     fn test_close_brace_token() {
-        let input = "}";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("}");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::CloseBrace);
     }
 
     #[test]
     fn test_semi_colon_token() {
-        let input = ";";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str(";");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::SemiColon);
     }
 
     #[test]
+    fn test_comma_token() {
+        let mut lexer = lexer_from_str(",");
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Comma);
+    }
+
+    #[test]
     fn test_eof_token() {
-        let input = "";
-        let mut lexer = Lexer::new(input);
+        let mut lexer = lexer_from_str("");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Eof);
     }
 
     #[test]
     fn test_multiple_tokens() {
-        let input = "let foo = 42;";
-        let mut lexer = Lexer::new(input);
+        let lexer = lexer_from_str("let foo = 42;");
         let tokens = lexer.collect::<Vec<Token>>();
         assert_eq!(
             tokens,
