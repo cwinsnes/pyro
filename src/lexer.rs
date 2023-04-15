@@ -21,15 +21,29 @@ use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
-    Number(i32),
-    Plus,
+    // Keywords
+    Func,
     Let,
-    Print,
-    Assignment,
+    Number,
+
+    // Identifiers and literals
     Identifier(String),
+    NumberLiteral(i32),
+
+    // Operators
+    Plus,
+    Assignment,
+
+    // Delimiters
     SemiColon,
+    OpenParen,
+    CloseParen,
+    OpenBrace,
+    CloseBrace,
+
+    Print,
     Eof,
 }
 
@@ -38,6 +52,8 @@ lazy_static! {
         let mut map = HashMap::new();
         map.insert("let", Token::Let);
         map.insert("print", Token::Print);
+        map.insert("func", Token::Func);
+        map.insert("number", Token::Number);
         map
     };
 }
@@ -71,27 +87,29 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scan input for a numeric literal value.
-    /// 
+    ///
     /// Will continue scanning until a non-decimal number value is
-    /// encountered in the sequence and return the number 
+    /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number(&mut self) -> i32 {
+    fn scan_number(&mut self) -> Result<i32, String> {
         let mut number = String::new();
         while let Some(&c) = self.input.peek() {
             if c.is_digit(10) {
                 number.push(c);
                 self.input.next();
+            } else if c.is_alphabetic() {
+                return Err(format!("Invalid number literal: {:?}{:?}", number, c));
             } else {
                 break;
             }
         }
-        number.parse().unwrap()
+        Ok(number.parse().unwrap())
     }
 
     /// Scan input for a valid identifier value.
-    /// 
+    ///
     /// Will continue scanning until a non-alphanumeric value is
-    /// encountered in the sequence and return the string 
+    /// encountered in the sequence and return the string
     /// represented by the consumed input.
     fn scan_identifier(&mut self) -> String {
         let mut identifier = String::new();
@@ -113,48 +131,66 @@ impl<'a> Lexer<'a> {
     ///
     /// If there are no more tokens available in the sequence, the function
     /// will instead return None.
-    /// 
+    ///
     /// # Panics
     /// This function will panic if an unexpected character is encountered in
     /// the sequence.
-    pub fn next_token(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Result<Option<Token>, String> {
         self.consume_whitespace();
         while let Some(&c) = self.input.peek() {
+            let return_token;
             match c {
                 '0'..='9' => {
-                    let number = self.scan_number();
-                    return Some(Token::Number(number));
-                }
-                '+' => {
-                    self.input.next();
-                    return Some(Token::Plus);
-                }
-                '=' => {
-                    self.input.next();
-                    return Some(Token::Assignment);
-                }
-                ';' => {
-                    self.input.next();
-                    return Some(Token::SemiColon);
+                    let number = self.scan_number()?;
+                    return_token = Some(Token::NumberLiteral(number));
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let identifier = self.scan_identifier();
                     if let Some(token) = KEYWORDS.get(&identifier[..]) {
-                        return Some(token.clone());
+                        return_token = Some(token.clone());
                     } else {
-                        return Some(Token::Identifier(identifier));
+                        return_token = Some(Token::Identifier(identifier));
                     }
                 }
+                '+' => {
+                    self.input.next();
+                    return_token = Some(Token::Plus);
+                }
+                '=' => {
+                    self.input.next();
+                    return_token = Some(Token::Assignment);
+                }
+                '(' => {
+                    self.input.next();
+                    return_token = Some(Token::OpenParen);
+                }
+                ')' => {
+                    self.input.next();
+                    return_token = Some(Token::CloseParen);
+                }
+                '{' => {
+                    self.input.next();
+                    return_token = Some(Token::OpenBrace);
+                }
+                '}' => {
+                    self.input.next();
+                    return_token = Some(Token::CloseBrace);
+                }
+                ';' => {
+                    self.input.next();
+                    return_token = Some(Token::SemiColon);
+                }
                 _ => {
-                    panic!("Unexpected character: {}", c);
+                    return Err(format!("Unexpected character: {}", c));
                 }
             }
+            return Ok(return_token);
         }
         if self.eof {
-            return None;
+            return Ok(None);
         }
         self.eof = true;
-        Some(Token::Eof)
+        Ok(Some(Token::Eof))
     }
 }
 
@@ -163,6 +199,144 @@ impl<'a> Iterator for Lexer<'a> {
 
     /// Advances the lexer and returns the next token.
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token()
+        match self.next_token() {
+            Ok(token) => token,
+            Err(s) => panic!("Error when iterating over tokens {:?}", s),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run tests for all the individual tokens
+    #[test]
+    fn test_let_token() {
+        let input = "let";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Let);
+    }
+
+    #[test]
+    fn test_func_token() {
+        let input = "func";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Func);
+    }
+
+    #[test]
+    fn test_print_token() {
+        let input = "print";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Print);
+    }
+
+    #[test]
+    fn test_identifier_token() {
+        let input = "foo";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Identifier("foo".to_string()));
+    }
+
+    #[test]
+    fn test_number_token() {
+        let input = "number";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Number);
+    }
+
+    #[test]
+    fn test_number_literal_token() {
+        let input = "42";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::NumberLiteral(42));
+    }
+    #[test]
+    fn test_plus_token() {
+        let input = "+";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Plus);
+    }
+
+    #[test]
+    fn test_assignment_token() {
+        let input = "=";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Assignment);
+    }
+
+    #[test]
+    fn test_open_paren_token() {
+        let input = "(";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::OpenParen);
+    }
+
+    #[test]
+    fn test_close_paren_token() {
+        let input = ")";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::CloseParen);
+    }
+
+    #[test]
+    fn test_open_brace_token() {
+        let input = "{";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::OpenBrace);
+    }
+
+    #[test]
+    fn test_close_brace_token() {
+        let input = "}";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::CloseBrace);
+    }
+
+    #[test]
+    fn test_semi_colon_token() {
+        let input = ";";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::SemiColon);
+    }
+
+    #[test]
+    fn test_eof_token() {
+        let input = "";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert_eq!(token, Token::Eof);
+    }
+
+    #[test]
+    fn test_multiple_tokens() {
+        let input = "let foo = 42;";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.collect::<Vec<Token>>();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Let,
+                Token::Identifier("foo".to_string()),
+                Token::Assignment,
+                Token::NumberLiteral(42),
+                Token::SemiColon,
+                Token::Eof
+            ]
+        );
     }
 }

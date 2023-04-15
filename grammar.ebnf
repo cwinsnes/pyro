@@ -1,0 +1,19 @@
+(* I do not pretend that this is necessarily a super accurate grammar but it is something to 
+build the basics from *)
+program             ::= function_declaration+;
+
+function_declaration ::= "func" identifier "(" parameter_list ")" "{" statement* "}";
+
+parameter_list      ::= type identifier ("," type identifier)*;
+statement           ::= let_declaration | expression_statement | function_call;
+let_declaration     ::= "let" identifier "=" expression ";";
+expression_statement ::= expression ";";
+function_call       ::= identifier "(" argument_list ")" ";";
+argument_list       ::= expression ("," expression)*;
+expression          ::= identifier | integer_literal | function_call;
+identifier          ::= letter letter_or_digit*;
+integer_literal     ::= digit+;
+letter              ::= [a-zA-Z];
+digit               ::= [0-9];
+type                ::= "number";
+letter_or_digit     ::= letter | digit;

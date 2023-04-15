@@ -1,11 +1,12 @@
+mod ast;
 mod lexer;
+use ast::Parser;
 use lexer::Lexer;
 
 fn main() {
-    let input = "let x = 42 + y;".to_string();
+    let input = "func main() {} ".to_string();
     let lexer = Lexer::new(&input);
 
-    for token in lexer {
-        println!("{:?}", token);
-    }
+    let mut parser = Parser::new(lexer);
+    println!("{:?}", parser.parse_program());
 }
