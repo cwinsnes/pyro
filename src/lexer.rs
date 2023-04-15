@@ -44,7 +44,6 @@ pub enum Token {
     CloseBrace,
     Comma,
 
-    Print,
     Eof,
 }
 
@@ -52,7 +51,6 @@ lazy_static! {
     static ref KEYWORDS: HashMap<&'static str, Token> = {
         let mut map = HashMap::new();
         map.insert("let", Token::Let);
-        map.insert("print", Token::Print);
         map.insert("func", Token::Func);
         map.insert("number", Token::Number);
         map
@@ -215,7 +213,7 @@ impl<'a> Iterator for Lexer<'a> {
 mod tests {
     use super::*;
 
-    fn lexer_from_str(input: &str) -> Lexer{
+    fn lexer_from_str(input: &str) -> Lexer {
         Lexer::new(input)
     }
 
@@ -232,13 +230,6 @@ mod tests {
         let mut lexer = lexer_from_str("func");
         let token = lexer.next().unwrap();
         assert_eq!(token, Token::Func);
-    }
-
-    #[test]
-    fn test_print_token() {
-        let mut lexer = lexer_from_str("print");
-        let token = lexer.next().unwrap();
-        assert_eq!(token, Token::Print);
     }
 
     #[test]
