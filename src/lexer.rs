@@ -30,7 +30,7 @@ pub enum Token {
 
     // Identifiers and literals
     Identifier(String),
-    NumberLiteral(i32),
+    NumberLiteral(i64),
 
     // Operators
     Plus,
@@ -90,7 +90,7 @@ impl<'a> Lexer<'a> {
     /// Will continue scanning until a non-decimal number value is
     /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number(&mut self) -> Result<i32, String> {
+    fn scan_number(&mut self) -> Result<i64, String> {
         let mut number = String::new();
         while let Some(&c) = self.input.peek() {
             if c.is_digit(10) {

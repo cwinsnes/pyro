@@ -1,15 +1,15 @@
 use crate::lexer::Lexer;
 use crate::lexer::Token;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableType {
     Number,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Argument {
-    argument_type: VariableType,
-    identifier: String,
+    pub argument_type: VariableType,
+    pub identifier: String,
 }
 
 // #[derive(Debug, PartialEq)]
@@ -17,7 +17,7 @@ pub struct Argument {
 //     Plus,
 // }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ASTNode {
     Program(Vec<ASTNode>),
 
@@ -29,7 +29,7 @@ pub enum ASTNode {
     // Print(Box<ASTNode>),
     // BinaryOp(Box<ASTNode>, Operator, Box<ASTNode>),
     Identifier(String),
-    IntegerLiteral(i32),
+    IntegerLiteral(i64),
 }
 
 /// Parser for the simple Pyro programming language.
