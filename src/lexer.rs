@@ -45,6 +45,8 @@ pub enum Token {
     Comma,
 
     Eof,
+
+    NoToken,
 }
 
 lazy_static! {
@@ -134,54 +136,54 @@ impl<'a> Lexer<'a> {
     /// # Panics
     /// This function will panic if an unexpected character is encountered in
     /// the sequence.
-    pub fn next_token(&mut self) -> Result<Option<Token>, String> {
+    pub fn next_token(&mut self) -> Result<Token, String> {
         self.consume_whitespace();
         while let Some(&c) = self.input.peek() {
             let return_token;
             match c {
                 '0'..='9' => {
                     let number = self.scan_number()?;
-                    return_token = Some(Token::NumberLiteral(number));
+                    return_token = Token::NumberLiteral(number);
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let identifier = self.scan_identifier();
                     if let Some(token) = KEYWORDS.get(&identifier[..]) {
-                        return_token = Some(token.clone());
+                        return_token = token.clone();
                     } else {
-                        return_token = Some(Token::Identifier(identifier));
+                        return_token = Token::Identifier(identifier);
                     }
                 }
                 '+' => {
                     self.input.next();
-                    return_token = Some(Token::Plus);
+                    return_token = Token::Plus;
                 }
                 '=' => {
                     self.input.next();
-                    return_token = Some(Token::Assignment);
+                    return_token = Token::Assignment;
                 }
                 '(' => {
                     self.input.next();
-                    return_token = Some(Token::OpenParen);
+                    return_token = Token::OpenParen;
                 }
                 ')' => {
                     self.input.next();
-                    return_token = Some(Token::CloseParen);
+                    return_token = Token::CloseParen;
                 }
                 '{' => {
                     self.input.next();
-                    return_token = Some(Token::OpenBrace);
+                    return_token = Token::OpenBrace;
                 }
                 ',' => {
                     self.input.next();
-                    return_token = Some(Token::Comma);
+                    return_token = Token::Comma;
                 }
                 '}' => {
                     self.input.next();
-                    return_token = Some(Token::CloseBrace);
+                    return_token = Token::CloseBrace;
                 }
                 ';' => {
                     self.input.next();
-                    return_token = Some(Token::SemiColon);
+                    return_token = Token::SemiColon;
                 }
                 _ => {
                     return Err(format!("Unexpected character: {}", c));
@@ -189,22 +191,27 @@ impl<'a> Lexer<'a> {
             }
             return Ok(return_token);
         }
-        if self.eof {
-            return Ok(None);
-        }
-        self.eof = true;
-        Ok(Some(Token::Eof))
+        
+        Ok(Token::Eof)
     }
 }
 
+/// Iterator implementation for Lexer.
+/// Returns tokens in sequence until no more tokens can be found.
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = Result<Token, String>;
 
-    /// Advances the lexer and returns the next token.
     fn next(&mut self) -> Option<Self::Item> {
-        match self.next_token() {
-            Ok(token) => token,
-            Err(s) => panic!("Error when iterating over tokens {:?}", s),
+        if self.eof {
+            return None;
+        }
+        let token = self.next_token();
+        match token {
+            Ok(Token::Eof) => {
+                self.eof = true;
+                Some(token)
+            },
+            _ => Some(token),
         }
     }
 }
@@ -221,104 +228,108 @@ mod tests {
     #[test]
     fn test_let_token() {
         let mut lexer = lexer_from_str("let");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Let);
     }
 
     #[test]
     fn test_func_token() {
         let mut lexer = lexer_from_str("func");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Func);
     }
 
     #[test]
     fn test_identifier_token() {
         let mut lexer = lexer_from_str("foo");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Identifier("foo".to_string()));
     }
 
     #[test]
     fn test_number_token() {
         let mut lexer = lexer_from_str("number");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Number);
     }
 
     #[test]
     fn test_number_literal_token() {
         let mut lexer = lexer_from_str("42");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::NumberLiteral(42));
     }
     #[test]
     fn test_plus_token() {
         let mut lexer = lexer_from_str("+");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Plus);
     }
 
     #[test]
     fn test_assignment_token() {
         let mut lexer = lexer_from_str("=");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Assignment);
     }
 
     #[test]
     fn test_open_paren_token() {
         let mut lexer = lexer_from_str("(");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::OpenParen);
     }
 
     #[test]
     fn test_close_paren_token() {
         let mut lexer = lexer_from_str(")");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::CloseParen);
     }
 
     #[test]
     fn test_open_brace_token() {
         let mut lexer = lexer_from_str("{");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::OpenBrace);
     }
 
     #[test]
     fn test_close_brace_token() {
         let mut lexer = lexer_from_str("}");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::CloseBrace);
     }
 
     #[test]
     fn test_semi_colon_token() {
         let mut lexer = lexer_from_str(";");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::SemiColon);
     }
 
     #[test]
     fn test_comma_token() {
         let mut lexer = lexer_from_str(",");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Comma);
     }
 
     #[test]
     fn test_eof_token() {
         let mut lexer = lexer_from_str("");
-        let token = lexer.next().unwrap();
+        let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Eof);
     }
 
     #[test]
     fn test_multiple_tokens() {
         let lexer = lexer_from_str("let foo = 42;");
-        let tokens = lexer.collect::<Vec<Token>>();
+        let tokens: Result<Vec<Token>, String> = lexer.into_iter().collect();
+
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+
         assert_eq!(
             tokens,
             vec![
@@ -330,5 +341,12 @@ mod tests {
                 Token::Eof
             ]
         );
+    }
+
+    #[test]
+    fn test_invalid_number_literal() {
+        let mut lexer = lexer_from_str("4test32;");
+        let token = lexer.next_token();
+        assert!(token.is_err());
     }
 }
