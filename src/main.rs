@@ -1,31 +1,33 @@
 mod ast;
-mod code_generator;
+mod compiler;
 mod lexer;
 use std::path::Path;
 
 use ast::Parser;
+use compiler::Compiler;
 use lexer::Lexer;
-use code_generator::Compiler;
 
 fn main() {
     let input = "
-    func main(number x, number y) {
-        let x = 32;
+    func other(number x) > number {
+        return x;
     }
-    
-    func other() {
-        let s = 123;
-    }"
+    func main() > number {
+        return other(123);
+    }
+    "
     .to_string();
     let lexer = Lexer::new(&input);
 
     let mut parser = Parser::new(lexer);
-    let ast =  parser.parse_program().unwrap();
+    let ast = parser.parse_program().unwrap();
     let compiler = Compiler::new();
 
-    println!("{:?}", ast);
     let mut compiler = compiler;
-    
+
     let output_path = Path::new("output.o");
-    compiler.compile(ast, output_path);
+    let res = compiler.compile(ast, Some(output_path));
+    if res.is_err() {
+        println!("{:?}", res);
+    }
 }

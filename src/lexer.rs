@@ -27,6 +27,7 @@ pub enum Token {
     Func,
     Let,
     Number,
+    Return,
 
     // Identifiers and literals
     Identifier(String),
@@ -43,6 +44,7 @@ pub enum Token {
     OpenBrace,
     CloseBrace,
     Comma,
+    GreaterThan,
 
     Eof,
 
@@ -55,6 +57,7 @@ lazy_static! {
         map.insert("let", Token::Let);
         map.insert("func", Token::Func);
         map.insert("number", Token::Number);
+        map.insert("return", Token::Return);
         map
     };
 }
@@ -185,13 +188,17 @@ impl<'a> Lexer<'a> {
                     self.input.next();
                     return_token = Token::SemiColon;
                 }
+                '>' => {
+                    self.input.next();
+                    return_token = Token::GreaterThan;
+                }
                 _ => {
                     return Err(format!("Unexpected character: {}", c));
                 }
             }
             return Ok(return_token);
         }
-        
+
         Ok(Token::Eof)
     }
 }
@@ -210,7 +217,7 @@ impl<'a> Iterator for Lexer<'a> {
             Ok(Token::Eof) => {
                 self.eof = true;
                 Some(token)
-            },
+            }
             _ => Some(token),
         }
     }
@@ -313,6 +320,20 @@ mod tests {
         let mut lexer = lexer_from_str(",");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Comma);
+    }
+
+    #[test]
+    fn test_greater_than_token() {
+        let mut lexer = lexer_from_str(">");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::GreaterThan);
+    }
+
+    #[test]
+    fn test_return_token() {
+        let mut lexer = lexer_from_str("return");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Return);
     }
 
     #[test]

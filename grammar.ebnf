@@ -2,9 +2,10 @@
 build the basics from *)
 program             ::= function_declaration+;
 
-function_declaration ::= "func" identifier "(" parameter_list ")" "{" statement* "}";
+function_declaration ::= "func" identifier "(" parameter_list ")" return_value "{" statement* "}";
 
 parameter_list      ::= type identifier ("," type identifier)*;
+return_value        ::= (">" type) | "" ;
 statement           ::= let_declaration | expression_statement | function_call;
 let_declaration     ::= "let" identifier "=" expression ";";
 expression_statement ::= expression ";";
