@@ -17,25 +17,36 @@ use inkwell::targets::{
 };
 use inkwell::types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{
-    AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue,
-    PointerValue,
+    AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
+    IntValue, PointerValue,
 };
 use inkwell::{execution_engine, AddressSpace, OptimizationLevel};
 
-use crate::ast::{ASTNode, Argument, VariableType};
+use crate::ast::{ASTNode, Argument, Operator, VariableType};
 
 struct FunctionImplementation<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
     builder: Builder<'ctx>,
 
-    name: String,
+    identifier: String,
     arguments: Vec<Argument>,
     body: Vec<ASTNode>,
     return_type: VariableType,
 
     variables: HashMap<String, PointerValue<'ctx>>,
     fn_value: Option<FunctionValue<'ctx>>,
+}
+
+fn into_basic_value_enum(value: AnyValueEnum) -> Result<BasicValueEnum, String> {
+    match value.get_type() {
+        AnyTypeEnum::IntType(_) => Ok(value.into_int_value().as_basic_value_enum()),
+        AnyTypeEnum::FloatType(_) => Ok(value.into_float_value().as_basic_value_enum()),
+        _ => Err(format!(
+            "No basic value could be constructed from {:?}",
+            value
+        )),
+    }
 }
 
 impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
@@ -46,8 +57,12 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
     ) -> Result<FunctionValue<'ctx>, String> {
         let mut function;
 
-        if let ASTNode::FunctionDeclaration(name, arguments, return_type, body) =
-            function_declaration
+        if let ASTNode::FunctionDeclaration {
+            identifier,
+            arguments,
+            return_type,
+            body,
+        } = function_declaration
         {
             let builder = context.create_builder();
 
@@ -56,7 +71,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 module,
                 builder,
 
-                name,
+                identifier,
                 arguments,
                 body,
                 return_type,
@@ -144,13 +159,58 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             Some(ret_type) => ret_type.fn_type(args_types, false),
             None => self.context.void_type().fn_type(args_types, false),
         };
-        let fn_val = self.module.add_function(self.name.as_str(), fn_type, None);
+        let fn_val = self
+            .module
+            .add_function(self.identifier.as_str(), fn_type, None);
         self.fn_value = Some(fn_val);
 
         for (i, arg) in fn_val.get_param_iter().enumerate() {
             arg.set_name(self.arguments[i].identifier.as_str());
         }
         Ok(fn_val)
+    }
+
+    /// Build a binary operation out of the given operands.
+    ///
+    /// The `left` operand will determine the type of the operation.
+    /// The `right` operand needs to be of the same type for operation to work.
+    ///
+    /// Returns the resulting LLVM MathValue or an error if the types did not match.
+    fn build_binary_operation(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+        operator: Operator,
+    ) -> Result<AnyValueEnum<'ctx>, String> {
+        let lhs;
+        let rhs;
+        let op;
+
+        let op_type = left.get_type();
+
+        match op_type {
+            BasicTypeEnum::IntType(_) => match right.get_type() {
+                BasicTypeEnum::IntType(_) => {
+                    lhs = left.into_int_value();
+                    rhs = right.into_int_value();
+
+                    match operator {
+                        Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
+                        Operator::Minus => op = self.builder.build_int_sub(lhs, rhs, "intsubtraction"),
+                        Operator::Multiplication => op = self.builder.build_int_mul(lhs, rhs, "intmultiplication"),
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "{:?} and {:?} are not of the same type for add",
+                        left, right
+                    ))
+                }
+            },
+            _ => unimplemented!(),
+        }
+
+        return Ok(op.as_any_value_enum());
     }
 
     /// Evaluate an expression from the AST and build the LLVM code for it.
@@ -182,9 +242,24 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 let value = self.evaluate_statement(*expression)?;
 
                 self.variables.insert(variable_name, variable);
+                let value = into_basic_value_enum(value)?;
 
-                self.builder.build_store(variable, value.into_int_value());
+                self.builder.build_store(variable, value);
                 Ok(variable.as_any_value_enum())
+            }
+
+            ASTNode::BinaryOp {
+                operator,
+                left,
+                right,
+            } => {
+                let left = self.evaluate_statement(*left)?;
+                let right = self.evaluate_statement(*right)?;
+
+                let lhs = into_basic_value_enum(left)?;
+                let rhs = into_basic_value_enum(right)?;
+
+                self.build_binary_operation(lhs, rhs, operator)
             }
 
             ASTNode::FunctionCall(function_name, arguments) => {
@@ -214,14 +289,10 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
 
             ASTNode::ReturnStatement(expression) => {
                 let value = self.evaluate_statement(*expression)?;
-                let value = BasicValueEnum::try_from(value);
-                match value {
-                    Ok(value) => {
-                        let return_instruction = self.builder.build_return(Some(&value));
-                        Ok(return_instruction.as_any_value_enum())
-                    }
-                    Err(_) => Err("Invalid return expression".to_string()),
-                }
+                let value = into_basic_value_enum(value)?;
+
+                let return_instruction = self.builder.build_return(Some(&value));
+                Ok(return_instruction.as_any_value_enum())
             }
             _ => Err("Not implemented".to_string()),
         }

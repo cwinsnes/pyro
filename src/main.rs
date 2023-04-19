@@ -14,6 +14,9 @@ fn main() {
     }
     func main() > integer {
         print(other(32));
+        print(3 + 4 + other(12));
+        print(10 - 5);
+        print(6 * 6 * 6);
         return other(123);
     }
     "

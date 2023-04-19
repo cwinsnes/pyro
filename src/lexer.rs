@@ -35,6 +35,8 @@ pub enum Token {
 
     // Operators
     Plus,
+    Minus,
+    Asterisk,
     Assignment,
 
     // Delimiters
@@ -160,6 +162,14 @@ impl<'a> Lexer<'a> {
                     self.input.next();
                     return_token = Token::Plus;
                 }
+                '-' => {
+                    self.input.next();
+                    return_token = Token::Minus;
+                }
+                '*' => {
+                    self.input.next();
+                    return_token = Token::Asterisk;
+                }
                 '=' => {
                     self.input.next();
                     return_token = Token::Assignment;
@@ -254,8 +264,8 @@ mod tests {
     }
 
     #[test]
-    fn test_number_token() {
-        let mut lexer = lexer_from_str("number");
+    fn test_integer_token() {
+        let mut lexer = lexer_from_str("integer");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Integer);
     }
@@ -271,6 +281,20 @@ mod tests {
         let mut lexer = lexer_from_str("+");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Plus);
+    }
+
+    #[test]
+    fn test_minus_token() {
+        let mut lexer = lexer_from_str("-");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Minus);
+    }
+
+    #[test]
+    fn test_asterisk_token() {
+        let mut lexer = lexer_from_str("*");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Asterisk);
     }
 
     #[test]
