@@ -2,6 +2,7 @@ extern crate inkwell;
 
 use std::collections::HashMap;
 use std::env::var;
+use std::error::Error;
 use std::fmt::Pointer;
 use std::hash::Hash;
 use std::path::Path;
@@ -12,11 +13,12 @@ use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::support::LLVMString;
 use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
 use inkwell::types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{
-    AnyValue, AnyValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue, BasicMetadataValueEnum,
+    AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue,
+    PointerValue,
 };
 use inkwell::{execution_engine, AddressSpace, OptimizationLevel};
 
@@ -191,24 +193,22 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 let arguments = arguments
                     .iter()
                     .map(|a| self.evaluate_statement(a.clone()))
-                    .collect::<Result<Vec<AnyValueEnum>, String>>();
-
-                if arguments.is_err() {
-                    return Err("Error while parsing function arguments".to_string());
-                }
+                    .collect::<Result<Vec<AnyValueEnum>, String>>()?;
 
                 let arguments = arguments
-                    .unwrap()
                     .iter()
                     .map(|a| BasicMetadataValueEnum::try_from(*a))
                     .collect::<Result<Vec<BasicMetadataValueEnum>, _>>();
-                
-                if arguments.is_err() {
-                    return Err("Error while parsing function arguments".to_string());
-                }
-                let arguments = arguments.unwrap();
 
-                let call = self.builder.build_call(function, arguments.as_slice(), "call");
+                if arguments.is_err() {
+                    return Err("Error when parsing arguments for function call".to_string());
+                }
+
+                let arguments = arguments.unwrap();
+                let call = self
+                    .builder
+                    .build_call(function, arguments.as_slice(), "call");
+
                 Ok(call.as_any_value_enum())
             }
 
@@ -246,12 +246,52 @@ impl<'ctx> Compiler {
         Self { context }
     }
 
+    fn get_default_target_machine(&self) -> Result<TargetMachine, String> {
+        Target::initialize_all(&InitializationConfig::default());
+        let triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&triple);
+
+        if target.is_err() {
+            return Err(target.unwrap_err().to_string());
+        }
+        let target = target.unwrap();
+
+        let target_machine = target.create_target_machine(
+            &triple,
+            "x86-64",
+            "+avx2",
+            OptimizationLevel::Default,
+            RelocMode::Default,
+            CodeModel::Default,
+        );
+        if target_machine.is_none() {
+            return Err("Error when creating target machine".to_string());
+        }
+
+        Ok(target_machine.unwrap())
+    }
+
+    // TODO: Make print capable of handling other than i64.
+    fn add_print(&'ctx self, module: &Module<'ctx>) -> Result<(), String> {
+        let void_type = self.context.void_type();
+
+        let i64type = self.context.i64_type();
+        let print_type = void_type.fn_type(&[self.context.i64_type().into()], false);
+
+        let print_func = module.add_function("print", print_type, Some(Linkage::External));
+
+        Ok(())
+    }
+
     pub fn compile(
         &'ctx mut self,
         ast: ASTNode,
         output_path: Option<&Path>,
     ) -> Result<Option<LLVMString>, String> {
         let module = self.context.create_module("name");
+        if self.add_print(&module).is_err() {
+            return Err("Error when adding print function".to_string());
+        }
 
         match ast {
             ASTNode::Program(functions) => {
@@ -262,6 +302,9 @@ impl<'ctx> Compiler {
                         function_declaration,
                     )?;
                 }
+
+                println!("{:?}", module.verify());
+                module.print_to_stderr();
 
                 // TODO: Everything below this should be moved around
                 //       create functions and remove debug statements.
@@ -285,19 +328,19 @@ impl<'ctx> Compiler {
 
                     if let Ok(tempfile) = tempfile::NamedTempFile::new() {
                         target_machine
-                            .write_to_file(&module, FileType::Object, tempfile.path())
+                            .write_to_file(&module, FileType::Object, &Path::new("./test.o")) // tempfile.path())
                             .expect("Could not write module to file");
 
                         let temppath = tempfile.path().to_str().unwrap();
                         println!("{}", temppath);
                         let output_path = output_path.unwrap().to_str().unwrap();
 
+                        // TODO: Make this actually look for library instead of hard coded debug path
                         Command::new("clang")
-                            .args([temppath, "-o", output_path])
+                            .args(["./test.o", "-o", output_path, "target/debug/libpyro_st.so"])
                             .output()
                             .expect("Error compiling");
                     }
-
                     return Ok(None);
                 } else {
                     return Ok(Some(module.print_to_string()));
@@ -308,8 +351,8 @@ impl<'ctx> Compiler {
     }
 }
 
-
 // Todo: Write more comprehensive tests
+// TODO: Make it more reasonable to compare compiler output to expected output.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +418,3 @@ mod tests {
         assert_eq!(compiler_out, "; ModuleID = 'name'\nsource_filename = \"name\"\n\ndefine i64 @test(i64 %x) {\nentry:\n  %x1 = alloca i64, align 8\n  store i64 %x, i64* %x1, align 4\n  %x2 = load i64, i64* %x1, align 4\n  ret i64 %x2\n}\n\ndefine i64 @test2(i64 %x) {\nentry:\n  %x1 = alloca i64, align 8\n  store i64 %x, i64* %x1, align 4\n  %x2 = load i64, i64* %x1, align 4\n  ret i64 %x2\n}\n");
     }
 }
-    
-

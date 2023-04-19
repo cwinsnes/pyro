@@ -18,7 +18,7 @@ pub struct Argument {
 //     Plus,
 // }
 
-// TODO: Probably want to create more Structs to represent the 
+// TODO: Probably want to create more Structs to represent the
 //       tokens. To avoid having to parse mentally what the Box-values
 //       and Vecs point to.
 #[derive(Debug, Clone, PartialEq)]

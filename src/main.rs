@@ -13,6 +13,7 @@ fn main() {
         return x;
     }
     func main() > number {
+        print(other(32));
         return other(123);
     }
     "
