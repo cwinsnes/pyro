@@ -9,10 +9,10 @@ use lexer::Lexer;
 
 fn main() {
     let input = "
-    func other(number x) > number {
+    func other(integer x) > integer {
         return x;
     }
-    func main() > number {
+    func main() > integer {
         print(other(32));
         return other(123);
     }

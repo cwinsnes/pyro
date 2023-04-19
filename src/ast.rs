@@ -4,7 +4,7 @@ use crate::lexer::Token;
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableType {
     Void,
-    Number,
+    Integer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,26 +101,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // fn expect_number(&mut self) -> Result<i32, String> {
-    //     match self.current_token.clone() {
-    //         Some(Token::NumberLiteral(number)) => {
-    //             self.advance()?;
-    //             Ok(number)
-    //         }
-    //         Some(token) => Err(format!("Expected number but received token {:?}", token)),
-    //         None => Err(format!("Expected number but got no token")),
-    //     }
-    // }
-
     /// Expect one of the possible non-void Pyro types, consume it, and return the type.
     ///
     /// Returns the VariableType-representation of the encountered type.
     /// Returns an `Err` if any other kind of token was encountered.
     fn expect_variable_type(&mut self) -> Result<VariableType, String> {
         match self.current_token.clone() {
-            Token::Number => {
+            Token::Integer => {
                 self.advance()?;
-                Ok(VariableType::Number)
+                Ok(VariableType::Integer)
             }
             token => Err(format!(
                 "Expected variable type token but received token {:?}",
@@ -343,7 +332,7 @@ impl<'a> Parser<'a> {
     /// as expressions.
     fn parse_expression(&mut self) -> Result<ASTNode, String> {
         match self.peek_current() {
-            Token::NumberLiteral(literal) => {
+            Token::IntegerLiteral(literal) => {
                 self.advance()?;
                 Ok(ASTNode::IntegerLiteral(literal))
             }
@@ -398,7 +387,7 @@ mod tests {
     #[test]
     fn test_function_with_arguments() {
         let program = "
-            func foo(number x, number y, number z) {
+            func foo(integer x, integer y, integer z) {
             }";
         let lexer = Lexer::new(program);
 
@@ -422,15 +411,15 @@ mod tests {
                             arguments,
                             &vec!(
                                 Argument {
-                                    argument_type: VariableType::Number,
+                                    argument_type: VariableType::Integer,
                                     identifier: "x".to_string(),
                                 },
                                 Argument {
-                                    argument_type: VariableType::Number,
+                                    argument_type: VariableType::Integer,
                                     identifier: "y".to_string(),
                                 },
                                 Argument {
-                                    argument_type: VariableType::Number,
+                                    argument_type: VariableType::Integer,
                                     identifier: "z".to_string(),
                                 },
                             )
@@ -542,7 +531,7 @@ mod tests {
     #[test]
     fn test_function_with_return_value() {
         let program = "
-            func foo(number x) > number {
+            func foo(integer x) > integer {
                 return x;
             }";
         let lexer = Lexer::new(program);
@@ -594,7 +583,7 @@ mod tests {
     #[test]
     fn test_incorrect_return_value_for_function() {
         let program = "
-            func foo(number x) > {
+            func foo(integer x) > {
                 return x;
             }";
         let lexer = Lexer::new(program);

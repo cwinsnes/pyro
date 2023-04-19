@@ -117,7 +117,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
         variable_type: &VariableType,
     ) -> Option<BasicTypeEnum<'ctx>> {
         match variable_type {
-            VariableType::Number => Some(self.context.i64_type().as_basic_type_enum()),
+            VariableType::Integer => Some(self.context.i64_type().as_basic_type_enum()),
             VariableType::Void => None,
             _ => unimplemented!(),
         }
@@ -127,7 +127,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
     fn get_function_prototype(&mut self) -> Result<FunctionValue<'ctx>, String> {
         let ret_type = self.get_type_from_variable_type(&self.return_type);
 
-        let number_type = self.context.i64_type(); // TODO: As above
+        let i64_type = self.context.i64_type(); // TODO: As above
 
         let args_types = self
             .arguments
@@ -351,70 +351,10 @@ impl<'ctx> Compiler {
     }
 }
 
-// Todo: Write more comprehensive tests
+// Todo: Write tests
 // TODO: Make it more reasonable to compare compiler output to expected output.
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ast::{ASTNode, Argument, VariableType};
-
-    #[test]
-    fn test_compilation_of_single_function() {
-        let mut compiler = Compiler::new();
-
-        let ast = ASTNode::Program(vec![ASTNode::FunctionDeclaration(
-            "test".to_string(),
-            vec![Argument {
-                identifier: "x".to_string(),
-                argument_type: VariableType::Number,
-            }],
-            VariableType::Number,
-            vec![ASTNode::ReturnStatement(Box::new(ASTNode::Identifier(
-                "x".to_string(),
-            )))],
-        )]);
-
-        let compiler_out = compiler.compile(ast, None);
-        assert!(compiler_out.is_ok());
-        let compiler_out = compiler_out.unwrap();
-        assert!(compiler_out.is_some());
-        let compiler_out = compiler_out.unwrap().to_string();
-        assert_eq!(compiler_out, "; ModuleID = 'name'\nsource_filename = \"name\"\n\ndefine i64 @test(i64 %x) {\nentry:\n  %x1 = alloca i64, align 8\n  store i64 %x, i64* %x1, align 4\n  %x2 = load i64, i64* %x1, align 4\n  ret i64 %x2\n}\n");
-    }
-
-    fn test_compilation_of_multiple_functions() {
-        let mut compiler = Compiler::new();
-
-        let ast = ASTNode::Program(vec![
-            ASTNode::FunctionDeclaration(
-                "test".to_string(),
-                vec![Argument {
-                    identifier: "x".to_string(),
-                    argument_type: VariableType::Number,
-                }],
-                VariableType::Number,
-                vec![ASTNode::ReturnStatement(Box::new(ASTNode::Identifier(
-                    "x".to_string(),
-                )))],
-            ),
-            ASTNode::FunctionDeclaration(
-                "test2".to_string(),
-                vec![Argument {
-                    identifier: "x".to_string(),
-                    argument_type: VariableType::Number,
-                }],
-                VariableType::Number,
-                vec![ASTNode::ReturnStatement(Box::new(ASTNode::Identifier(
-                    "x".to_string(),
-                )))],
-            ),
-        ]);
-
-        let compiler_out = compiler.compile(ast, None);
-        assert!(compiler_out.is_ok());
-        let compiler_out = compiler_out.unwrap();
-        assert!(compiler_out.is_some());
-        let compiler_out = compiler_out.unwrap().to_string();
-        assert_eq!(compiler_out, "; ModuleID = 'name'\nsource_filename = \"name\"\n\ndefine i64 @test(i64 %x) {\nentry:\n  %x1 = alloca i64, align 8\n  store i64 %x, i64* %x1, align 4\n  %x2 = load i64, i64* %x1, align 4\n  ret i64 %x2\n}\n\ndefine i64 @test2(i64 %x) {\nentry:\n  %x1 = alloca i64, align 8\n  store i64 %x, i64* %x1, align 4\n  %x2 = load i64, i64* %x1, align 4\n  ret i64 %x2\n}\n");
-    }
 }

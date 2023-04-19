@@ -26,12 +26,12 @@ pub enum Token {
     // Keywords
     Func,
     Let,
-    Number,
+    Integer,
     Return,
 
     // Identifiers and literals
     Identifier(String),
-    NumberLiteral(i64),
+    IntegerLiteral(i64),
 
     // Operators
     Plus,
@@ -56,7 +56,7 @@ lazy_static! {
         let mut map = HashMap::new();
         map.insert("let", Token::Let);
         map.insert("func", Token::Func);
-        map.insert("number", Token::Number);
+        map.insert("integer", Token::Integer);
         map.insert("return", Token::Return);
         map
     };
@@ -146,7 +146,7 @@ impl<'a> Lexer<'a> {
             match c {
                 '0'..='9' => {
                     let number = self.scan_number()?;
-                    return_token = Token::NumberLiteral(number);
+                    return_token = Token::IntegerLiteral(number);
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let identifier = self.scan_identifier();
@@ -257,14 +257,14 @@ mod tests {
     fn test_number_token() {
         let mut lexer = lexer_from_str("number");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Number);
+        assert_eq!(token, Token::Integer);
     }
 
     #[test]
     fn test_number_literal_token() {
         let mut lexer = lexer_from_str("42");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::NumberLiteral(42));
+        assert_eq!(token, Token::IntegerLiteral(42));
     }
     #[test]
     fn test_plus_token() {
@@ -357,7 +357,7 @@ mod tests {
                 Token::Let,
                 Token::Identifier("foo".to_string()),
                 Token::Assignment,
-                Token::NumberLiteral(42),
+                Token::IntegerLiteral(42),
                 Token::SemiColon,
                 Token::Eof
             ]

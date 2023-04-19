@@ -12,6 +12,6 @@ tempfile = "3.5.0"
 libc = "0.2"
 
 [lib]
-path = "src/builtins.rs"
+path = "staticlib/builtins.rs"
 name = "pyro_st"
 crate-type = ["cdylib"]
