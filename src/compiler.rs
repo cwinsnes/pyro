@@ -42,6 +42,7 @@ fn into_basic_value_enum(value: AnyValueEnum) -> Result<BasicValueEnum, String> 
     match value.get_type() {
         AnyTypeEnum::IntType(_) => Ok(value.into_int_value().as_basic_value_enum()),
         AnyTypeEnum::FloatType(_) => Ok(value.into_float_value().as_basic_value_enum()),
+        AnyTypeEnum::ArrayType(_) => Ok(value.into_array_value().as_basic_value_enum()),
         _ => Err(format!(
             "No basic value could be constructed from {:?}",
             value
@@ -98,7 +99,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
 
         for (i, arg) in function.get_param_iter().enumerate() {
             let argument_name = self.arguments[i].clone().identifier;
-            let alloced = self.allocate_entry_stack_block(argument_name.as_str());
+            let alloced = self.allocate_entry_stack_block(argument_name.as_str(), arg.get_type());
             self.builder.build_store(alloced, arg);
 
             self.variables.insert(argument_name, alloced);
@@ -114,7 +115,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
 
     /// Allocate a block of memory on the stack in the function entry block .
     /// NOTE: Currently only allocates memory of size i64.
-    fn allocate_entry_stack_block(&mut self, name: &str) -> PointerValue<'ctx> {
+    fn allocate_entry_stack_block<T: BasicType<'ctx>> (&mut self, name: &str, ty: T) -> PointerValue<'ctx> {
         let local_builder = self.context.create_builder();
 
         let entry = self.fn_value.unwrap().get_first_basic_block().unwrap();
@@ -124,7 +125,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             None => local_builder.position_at_end(entry),
         }
 
-        local_builder.build_alloca(self.context.i64_type(), name)
+        local_builder.build_alloca(ty, name)
     }
 
     fn get_type_from_variable_type(
@@ -196,8 +197,15 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
 
                     match operator {
                         Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
-                        Operator::Minus => op = self.builder.build_int_sub(lhs, rhs, "intsubtraction"),
-                        Operator::Multiplication => op = self.builder.build_int_mul(lhs, rhs, "intmultiplication"),
+                        Operator::Minus => {
+                            op = self.builder.build_int_sub(lhs, rhs, "intsubtraction")
+                        }
+                        Operator::Multiplication => {
+                            op = self.builder.build_int_mul(lhs, rhs, "intmultiplication")
+                        }
+                        Operator::Division => {
+                            op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
+                        }
                     }
                 }
                 _ => {
@@ -224,6 +232,11 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 Ok(const_value.as_any_value_enum())
             }
 
+            ASTNode::StringLiteral(string) => {
+                let const_value = self.context.const_string(string.as_bytes(), true);
+                Ok(const_value.as_any_value_enum())
+            }
+
             ASTNode::Identifier(variable_name) => {
                 let variable_ptr = self.variables.get(&variable_name);
                 if variable_ptr.is_none() {
@@ -238,11 +251,12 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             }
 
             ASTNode::LetDeclaration(variable_name, expression) => {
-                let variable = self.allocate_entry_stack_block(variable_name.as_str());
                 let value = self.evaluate_statement(*expression)?;
-
-                self.variables.insert(variable_name, variable);
                 let value = into_basic_value_enum(value)?;
+
+                let variable = self.allocate_entry_stack_block(variable_name.as_str(), value.get_type());
+                self.variables.insert(variable_name, variable);
+                
 
                 self.builder.build_store(variable, value);
                 Ok(variable.as_any_value_enum())
@@ -301,7 +315,8 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
     fn build_function_body(&mut self) -> Result<(), String> {
         let iterator = self.body.to_vec();
         for statement in iterator {
-            let value = self.evaluate_statement(statement)?;
+            let value = self.evaluate_statement(statement);
+            let value = value.unwrap();
         }
         Ok(())
     }

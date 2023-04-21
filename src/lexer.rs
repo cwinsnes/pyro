@@ -32,12 +32,14 @@ pub enum Token {
     // Identifiers and literals
     Identifier(String),
     IntegerLiteral(i64),
+    StringLiteral(String),
 
     // Operators
     Plus,
     Minus,
     Asterisk,
     Assignment,
+    Slash,
 
     // Delimiters
     SemiColon,
@@ -120,7 +122,7 @@ impl<'a> Lexer<'a> {
     fn scan_identifier(&mut self) -> String {
         let mut identifier = String::new();
         while let Some(&c) = self.input.peek() {
-            if c.is_alphanumeric() {
+            if c.is_alphanumeric() || c == '_' {
                 identifier.push(c);
                 self.input.next();
             } else {
@@ -128,6 +130,38 @@ impl<'a> Lexer<'a> {
             }
         }
         identifier
+    }
+
+    /// Scan the input for a String delimited by '"' characters.
+    fn scan_string(&mut self) -> Result<String, String> {
+        let mut string = String::new();
+        self.input.next();
+        while let Some(&c) = self.input.peek() {
+            if c == '"' {
+                self.input.next();
+                break;
+            } else if c == '\\' {
+                self.input.next();
+                string.push(match self.input.next() {
+                    Some('\\') => '\\',
+                    Some('"') => '"',
+                    Some('n') => '\n',
+                    Some('t') => '\t',
+                    Some('r') => '\r',
+                    Some('0') => '\0',
+                    Some(c) => {
+                        return Err(format!("Invalid escape sequence: \\{}", c));
+                    }
+                    None => {
+                        return Err(String::from("Invalid escape sequence: \\"));
+                    }
+                });
+            } else {
+                string.push(c);
+                self.input.next();
+            }
+        }
+        Ok(string)
     }
 
     /// Get the next `Token` in the input sequence.
@@ -158,6 +192,10 @@ impl<'a> Lexer<'a> {
                         return_token = Token::Identifier(identifier);
                     }
                 }
+                '"' => {
+                    let string = self.scan_string()?;
+                    return_token = Token::StringLiteral(string);
+                }
                 '+' => {
                     self.input.next();
                     return_token = Token::Plus;
@@ -169,6 +207,10 @@ impl<'a> Lexer<'a> {
                 '*' => {
                     self.input.next();
                     return_token = Token::Asterisk;
+                }
+                '/' => {
+                    self.input.next();
+                    return_token = Token::Slash;
                 }
                 '=' => {
                     self.input.next();
@@ -271,6 +313,34 @@ mod tests {
     }
 
     #[test]
+    fn test_string_literal_token() {
+        let mut lexer = lexer_from_str("\"foo\"");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::StringLiteral("foo".to_string()));
+    }
+
+    #[test]
+    fn test_newline_string_literal_toke() {
+        let mut lexer = lexer_from_str("\"foo\\nbar\"");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::StringLiteral("foo\nbar".to_string()));
+    }
+
+    #[test]
+    fn test_tab_string_literal_token() {
+        let mut lexer = lexer_from_str("\"foo\\tbar\"");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::StringLiteral("foo\tbar".to_string()));
+    }
+
+    #[test]
+    fn test_backslash_string_literal_token() {
+        let mut lexer = lexer_from_str("\"foo\\\\bar\"");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::StringLiteral("foo\\bar".to_string()));
+    }
+
+    #[test]
     fn test_number_literal_token() {
         let mut lexer = lexer_from_str("42");
         let token = lexer.next_token().unwrap();
@@ -295,6 +365,13 @@ mod tests {
         let mut lexer = lexer_from_str("*");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Asterisk);
+    }
+
+    #[test]
+    fn test_slash_token() {
+        let mut lexer = lexer_from_str("/");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Slash);
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub enum Operator {
     Plus,
     Minus,
     Multiplication,
+    Division,
 }
 
 fn token_to_operator(token: &Token) -> Result<Operator, String> {
@@ -25,6 +26,7 @@ fn token_to_operator(token: &Token) -> Result<Operator, String> {
         Token::Plus => Ok(Operator::Plus),
         Token::Minus => Ok(Operator::Minus),
         Token::Asterisk => Ok(Operator::Multiplication),
+        Token::Slash => Ok(Operator::Division),
         _ => Err(format!("Invalid operator: {:?}", token)),
     }
 }
@@ -54,6 +56,7 @@ pub enum ASTNode {
     },
     Identifier(String),
     IntegerLiteral(i64),
+    StringLiteral(String),
 }
 
 /// Parser for the simple Pyro programming language.
@@ -364,9 +367,17 @@ impl<'a> Parser<'a> {
                     left = ASTNode::Identifier(literal);
                 }
             }
+            Token::StringLiteral(string) => {
+                self.advance()?;
+                left = ASTNode::StringLiteral(string);
+            }
             other => return Err(format!("Expected expression but got {:?}", other)),
         }
-        if self.check(Token::Plus) || self.check(Token::Minus) || self.check(Token::Asterisk) {
+        if self.check(Token::Plus)
+            || self.check(Token::Minus)
+            || self.check(Token::Asterisk)
+            || self.check(Token::Slash)
+        {
             let operator = token_to_operator(&self.current_token)?;
             self.advance()?;
             let right = self.parse_expression()?;
@@ -667,6 +678,54 @@ mod tests {
                                 );
                             }
                             _ => panic!("Expected ReturnStatement"),
+                        }
+                    }
+                    _ => panic!("Expected function declaration"),
+                }
+            }
+            _ => panic!("Expected program"),
+        }
+    }
+
+    #[test]
+    fn test_parse_string_assignment() {
+        let program = "
+            func foo() {
+                let x = \"hello\";
+            }";
+        let lexer = Lexer::new(program);
+
+        let mut parser = super::Parser::new(lexer);
+        let ast = parser.parse_program();
+        if ast.is_err() {
+            panic!("{:?}", ast);
+        }
+
+        let ast = ast.unwrap();
+        match ast {
+            ASTNode::Program(functions) => {
+                assert_eq!(functions.len(), 1);
+                let function = functions.first().unwrap();
+                match function {
+                    ASTNode::FunctionDeclaration {
+                        identifier,
+                        arguments,
+                        return_type,
+                        body,
+                    } => {
+                        assert_eq!(identifier, "foo");
+                        assert_eq!(arguments.len(), 0);
+                        assert_eq!(body.len(), 1);
+
+                        match body.get(0).unwrap() {
+                            ASTNode::LetDeclaration(identifier, expression) => {
+                                assert_eq!(identifier, "x");
+                                assert_eq!(
+                                    **expression,
+                                    ASTNode::StringLiteral("hello".to_string())
+                                );
+                            }
+                            _ => panic!("Expected let declaration"),
                         }
                     }
                     _ => panic!("Expected function declaration"),
