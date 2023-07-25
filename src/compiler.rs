@@ -15,7 +15,7 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
-use inkwell::types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, PointerType};
 use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
     IntValue, PointerValue,
@@ -34,7 +34,9 @@ struct FunctionImplementation<'a, 'ctx> {
     body: Vec<ASTNode>,
     return_type: VariableType,
 
+    constant_idx: u64,
     variables: HashMap<String, PointerValue<'ctx>>,
+    string_constants: HashMap<String, (String, PointerValue<'ctx>)>,
     fn_value: Option<FunctionValue<'ctx>>,
 }
 
@@ -43,6 +45,7 @@ fn into_basic_value_enum(value: AnyValueEnum) -> Result<BasicValueEnum, String> 
         AnyTypeEnum::IntType(_) => Ok(value.into_int_value().as_basic_value_enum()),
         AnyTypeEnum::FloatType(_) => Ok(value.into_float_value().as_basic_value_enum()),
         AnyTypeEnum::ArrayType(_) => Ok(value.into_array_value().as_basic_value_enum()),
+        AnyTypeEnum::PointerType(_) => Ok(value.into_pointer_value().as_basic_value_enum()),
         _ => Err(format!(
             "No basic value could be constructed from {:?}",
             value
@@ -77,7 +80,9 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 body,
                 return_type,
 
+                constant_idx: 0,
                 variables: HashMap::new(),
+                string_constants: HashMap::new(),
                 fn_value: None,
             }
         } else {
@@ -221,6 +226,15 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
         return Ok(op.as_any_value_enum());
     }
 
+    fn get_next_constant_name(&mut self) -> String {
+        let mut string = String::new();
+        string.push_str("__pyro_compiler_constant_");
+        string.push_str(self.constant_idx.to_string().as_str());
+        self.constant_idx += 1;
+
+        string
+    }
+
     /// Evaluate an expression from the AST and build the LLVM code for it.
     /// Returns the final output type of the expression, or `Err` if no expression
     /// could be parsed.
@@ -233,8 +247,13 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             }
 
             ASTNode::StringLiteral(string) => {
-                let const_value = self.context.const_string(string.as_bytes(), true);
-                Ok(const_value.as_any_value_enum())
+                
+                if self.string_constants.contains_key(string.as_str()) {
+                    let (ptr, variable_name) = self.string_constants.get(string.as_str()).unwrap();
+                }
+                let const_name = self.get_next_constant_name();
+                let ptr = self.builder.build_global_string_ptr(&string, const_name.as_str());
+                Ok(ptr.as_any_value_enum())
             }
 
             ASTNode::Identifier(variable_name) => {
@@ -316,7 +335,9 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
         let iterator = self.body.to_vec();
         for statement in iterator {
             let value = self.evaluate_statement(statement);
-            let value = value.unwrap();
+            if value.is_err() {
+                return Err(value.unwrap_err());
+            }
         }
         Ok(())
     }
@@ -358,13 +379,13 @@ impl<'ctx> Compiler {
     }
 
     // TODO: Make print capable of handling other than i64.
-    fn add_print(&'ctx self, module: &Module<'ctx>) -> Result<(), String> {
+    fn add_print(&'ctx self, target_machine: &TargetMachine, module: &Module<'ctx>) -> Result<(), String> {
         let void_type = self.context.void_type();
 
-        let i64type = self.context.i64_type();
-        let print_type = void_type.fn_type(&[self.context.i64_type().into()], false);
+        let char_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let print_type = void_type.fn_type(&[char_ptr.into()], true);
 
-        let print_func = module.add_function("print", print_type, Some(Linkage::External));
+        module.add_function("print", print_type, Some(Linkage::External));
 
         Ok(())
     }
@@ -374,8 +395,9 @@ impl<'ctx> Compiler {
         ast: ASTNode,
         output_path: Option<&Path>,
     ) -> Result<Option<LLVMString>, String> {
+        let target_machine = self.get_default_target_machine().expect("Error when creating target machine");
         let module = self.context.create_module("name");
-        if self.add_print(&module).is_err() {
+        if self.add_print(&target_machine, &module).is_err() {
             return Err("Error when adding print function".to_string());
         }
 
@@ -396,22 +418,6 @@ impl<'ctx> Compiler {
                 //       create functions and remove debug statements.
 
                 if output_path.is_some() {
-                    Target::initialize_all(&InitializationConfig::default());
-                    let triple = TargetMachine::get_default_triple();
-                    let target = Target::from_triple(&triple)
-                        .expect("couldn't create target from target triple");
-
-                    let target_machine = target
-                        .create_target_machine(
-                            &triple,
-                            "x86-64",
-                            "+avx2",
-                            OptimizationLevel::Default,
-                            RelocMode::Default,
-                            CodeModel::Default,
-                        )
-                        .expect("Could not create target machine");
-
                     if let Ok(tempfile) = tempfile::NamedTempFile::new() {
                         target_machine
                             .write_to_file(&module, FileType::Object, &Path::new("./test.o")) // tempfile.path())
