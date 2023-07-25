@@ -15,7 +15,9 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
-use inkwell::types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, PointerType};
+use inkwell::types::{
+    AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, PointerType,
+};
 use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
     IntValue, PointerValue,
@@ -36,7 +38,7 @@ struct FunctionImplementation<'a, 'ctx> {
 
     constant_idx: u64,
     variables: HashMap<String, PointerValue<'ctx>>,
-    string_constants: HashMap<String, (String, PointerValue<'ctx>)>,
+    string_constants: HashMap<String, PointerValue<'ctx>>,
     fn_value: Option<FunctionValue<'ctx>>,
 }
 
@@ -120,7 +122,11 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
 
     /// Allocate a block of memory on the stack in the function entry block .
     /// NOTE: Currently only allocates memory of size i64.
-    fn allocate_entry_stack_block<T: BasicType<'ctx>> (&mut self, name: &str, ty: T) -> PointerValue<'ctx> {
+    fn allocate_entry_stack_block<T: BasicType<'ctx>>(
+        &mut self,
+        name: &str,
+        ty: T,
+    ) -> PointerValue<'ctx> {
         let local_builder = self.context.create_builder();
 
         let entry = self.fn_value.unwrap().get_first_basic_block().unwrap();
@@ -247,12 +253,17 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             }
 
             ASTNode::StringLiteral(string) => {
-                
                 if self.string_constants.contains_key(string.as_str()) {
-                    let (ptr, variable_name) = self.string_constants.get(string.as_str()).unwrap();
+                    let ptr = self.string_constants.get(string.as_str()).unwrap();
+                    return Ok(ptr.as_any_value_enum());
                 }
+
                 let const_name = self.get_next_constant_name();
-                let ptr = self.builder.build_global_string_ptr(&string, const_name.as_str());
+                let ptr = self
+                    .builder
+                    .build_global_string_ptr(&string, const_name.as_str());
+                let ptr = ptr.as_pointer_value();
+                self.string_constants.insert(string, ptr);
                 Ok(ptr.as_any_value_enum())
             }
 
@@ -273,9 +284,9 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
                 let value = self.evaluate_statement(*expression)?;
                 let value = into_basic_value_enum(value)?;
 
-                let variable = self.allocate_entry_stack_block(variable_name.as_str(), value.get_type());
+                let variable =
+                    self.allocate_entry_stack_block(variable_name.as_str(), value.get_type());
                 self.variables.insert(variable_name, variable);
-                
 
                 self.builder.build_store(variable, value);
                 Ok(variable.as_any_value_enum())
@@ -379,7 +390,11 @@ impl<'ctx> Compiler {
     }
 
     // TODO: Make print capable of handling other than i64.
-    fn add_print(&'ctx self, target_machine: &TargetMachine, module: &Module<'ctx>) -> Result<(), String> {
+    fn add_print(
+        &'ctx self,
+        target_machine: &TargetMachine,
+        module: &Module<'ctx>,
+    ) -> Result<(), String> {
         let void_type = self.context.void_type();
 
         let char_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
@@ -395,7 +410,9 @@ impl<'ctx> Compiler {
         ast: ASTNode,
         output_path: Option<&Path>,
     ) -> Result<Option<LLVMString>, String> {
-        let target_machine = self.get_default_target_machine().expect("Error when creating target machine");
+        let target_machine = self
+            .get_default_target_machine()
+            .expect("Error when creating target machine");
         let module = self.context.create_module("name");
         if self.add_print(&target_machine, &module).is_err() {
             return Err("Error when adding print function".to_string());
@@ -420,16 +437,24 @@ impl<'ctx> Compiler {
                 if output_path.is_some() {
                     if let Ok(tempfile) = tempfile::NamedTempFile::new() {
                         target_machine
-                            .write_to_file(&module, FileType::Object, &Path::new("./test.o")) // tempfile.path())
+                            .write_to_file(&module, FileType::Object, tempfile.path())
                             .expect("Could not write module to file");
 
-                        let temppath = tempfile.path().to_str().unwrap();
-                        println!("{}", temppath);
+                        let temppath = tempfile
+                            .path()
+                            .to_str()
+                            .expect("Error creating temporary file");
                         let output_path = output_path.unwrap().to_str().unwrap();
 
                         // TODO: Make this actually look for library instead of hard coded debug path
-                        Command::new("clang")
-                            .args(["./test.o", "-o", output_path, "target/debug/libpyro_st.so"])
+                        let out_str = Command::new("clang")
+                            .args([
+                                "-no-pie",
+                                tempfile.path().to_str().unwrap(),
+                                "-o",
+                                output_path,
+                                "target/debug/libpyro_st.so",
+                            ])
                             .output()
                             .expect("Error compiling");
                     }
