@@ -16,7 +16,7 @@ fn main() {
         let test_string = \"Test!\";
         print(\"int\");
         print(\"int\");
-        print(\"{int}-{string}\", 321, test_string);
+        print(\"This is a {int}-{string}-{string}\", 321, test_string, \"asd\");
         print(\"This is a {string} string\", test_string);
         print(\"{string}\", \"other test string\");
         return other(123);

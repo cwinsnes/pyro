@@ -26,22 +26,14 @@ use inkwell::{execution_engine, AddressSpace, OptimizationLevel};
 
 use crate::ast::{ASTNode, Argument, Operator, VariableType};
 
-struct FunctionImplementation<'a, 'ctx> {
-    context: &'ctx Context,
-    module: &'a Module<'ctx>,
-    builder: Builder<'ctx>,
-
-    identifier: String,
-    arguments: Vec<Argument>,
-    body: Vec<ASTNode>,
-    return_type: VariableType,
-
-    constant_idx: u64,
-    variables: HashMap<String, PointerValue<'ctx>>,
-    string_constants: HashMap<String, PointerValue<'ctx>>,
-    fn_value: Option<FunctionValue<'ctx>>,
-}
-
+/// Turn an AnyValueEnum into a BasicValueEnum if possible.
+///
+/// If there is no relevant BasicValueEnum for the given AnyValueEnum,
+/// an Err is returned.
+///
+/// # Note
+/// At the current moment, this functions is not implemented for all
+/// possible BasicValueEnums.
 fn into_basic_value_enum(value: AnyValueEnum) -> Result<BasicValueEnum, String> {
     match value.get_type() {
         AnyTypeEnum::IntType(_) => Ok(value.into_int_value().as_basic_value_enum()),
@@ -55,10 +47,26 @@ fn into_basic_value_enum(value: AnyValueEnum) -> Result<BasicValueEnum, String> 
     }
 }
 
-impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
+struct FunctionCompiler<'a, 'ctx> {
+    context: &'ctx Context,
+    module: &'a Module<'ctx>,
+    builder: &'a Builder<'ctx>,
+
+    identifier: String,
+    arguments: Vec<Argument>,
+    body: Vec<ASTNode>,
+    return_type: VariableType,
+
+    constant_idx: u64,
+    variables: HashMap<String, PointerValue<'ctx>>,
+    string_constants: HashMap<String, PointerValue<'ctx>>,
+    fn_value: Option<FunctionValue<'ctx>>,
+}
+impl<'a, 'ctx> FunctionCompiler<'a, 'ctx> {
     fn compile_function(
         context: &'ctx Context,
         module: &'a Module<'ctx>,
+        builder: &'a Builder<'ctx>,
         function_declaration: ASTNode,
     ) -> Result<FunctionValue<'ctx>, String> {
         let mut function;
@@ -70,9 +78,7 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             body,
         } = function_declaration
         {
-            let builder = context.create_builder();
-
-            function = FunctionImplementation {
+            function = FunctionCompiler {
                 context,
                 module,
                 builder,
@@ -94,6 +100,38 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             ));
         }
         function.compile()
+    }
+
+    /// Compile the interface defined by a FunctionDeclaration.
+    fn get_function_prototype(&mut self) -> Result<FunctionValue<'ctx>, String> {
+        let ret_type = self.get_type_from_variable_type(&self.return_type);
+
+        let i64_type = self.context.i64_type(); // TODO: As above
+
+        let args_types = self
+            .arguments
+            .iter()
+            .map(|a| {
+                self.get_type_from_variable_type(&a.argument_type)
+                    .expect("Invalid Argument type")
+                    .into()
+            })
+            .collect::<Vec<BasicMetadataTypeEnum>>();
+        let args_types = args_types.as_slice();
+
+        let fn_type = match ret_type {
+            Some(ret_type) => ret_type.fn_type(args_types, false),
+            None => self.context.void_type().fn_type(args_types, false),
+        };
+        let fn_val = self
+            .module
+            .add_function(self.identifier.as_str(), fn_type, None);
+        self.fn_value = Some(fn_val);
+
+        for (i, arg) in fn_val.get_param_iter().enumerate() {
+            arg.set_name(self.arguments[i].identifier.as_str());
+        }
+        Ok(fn_val)
     }
 
     fn compile(&mut self) -> Result<FunctionValue<'ctx>, String> {
@@ -128,14 +166,12 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
         ty: T,
     ) -> PointerValue<'ctx> {
         let local_builder = self.context.create_builder();
-
         let entry = self.fn_value.unwrap().get_first_basic_block().unwrap();
 
         match entry.get_first_instruction() {
             Some(first_instr) => local_builder.position_before(&first_instr),
             None => local_builder.position_at_end(entry),
         }
-
         local_builder.build_alloca(ty, name)
     }
 
@@ -148,38 +184,6 @@ impl<'a, 'ctx> FunctionImplementation<'a, 'ctx> {
             VariableType::Void => None,
             _ => unimplemented!(),
         }
-    }
-
-    /// Compile the interface defined by a FunctionDeclaration.
-    fn get_function_prototype(&mut self) -> Result<FunctionValue<'ctx>, String> {
-        let ret_type = self.get_type_from_variable_type(&self.return_type);
-
-        let i64_type = self.context.i64_type(); // TODO: As above
-
-        let args_types = self
-            .arguments
-            .iter()
-            .map(|a| {
-                self.get_type_from_variable_type(&a.argument_type)
-                    .expect("Invalid Argument type")
-                    .into()
-            })
-            .collect::<Vec<BasicMetadataTypeEnum>>();
-        let args_types = args_types.as_slice();
-
-        let fn_type = match ret_type {
-            Some(ret_type) => ret_type.fn_type(args_types, false),
-            None => self.context.void_type().fn_type(args_types, false),
-        };
-        let fn_val = self
-            .module
-            .add_function(self.identifier.as_str(), fn_type, None);
-        self.fn_value = Some(fn_val);
-
-        for (i, arg) in fn_val.get_param_iter().enumerate() {
-            arg.set_name(self.arguments[i].identifier.as_str());
-        }
-        Ok(fn_val)
     }
 
     /// Build a binary operation out of the given operands.
@@ -389,20 +393,11 @@ impl<'ctx> Compiler {
         Ok(target_machine.unwrap())
     }
 
-    // TODO: Make print capable of handling other than i64.
-    fn add_print(
-        &'ctx self,
-        target_machine: &TargetMachine,
-        module: &Module<'ctx>,
-    ) -> Result<(), String> {
+    fn add_print(&'ctx self, module: &Module<'ctx>) {
         let void_type = self.context.void_type();
-
         let char_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let print_type = void_type.fn_type(&[char_ptr.into()], true);
-
         module.add_function("print", print_type, Some(Linkage::External));
-
-        Ok(())
     }
 
     pub fn compile(
@@ -413,17 +408,18 @@ impl<'ctx> Compiler {
         let target_machine = self
             .get_default_target_machine()
             .expect("Error when creating target machine");
+
         let module = self.context.create_module("name");
-        if self.add_print(&target_machine, &module).is_err() {
-            return Err("Error when adding print function".to_string());
-        }
+        let builder = self.context.create_builder();
+        self.add_print(&module);
 
         match ast {
             ASTNode::Program(functions) => {
                 for function_declaration in functions {
-                    FunctionImplementation::compile_function(
+                    FunctionCompiler::compile_function(
                         &self.context,
                         &module,
+                        &builder,
                         function_declaration,
                     )?;
                 }
