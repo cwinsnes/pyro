@@ -1,8 +1,8 @@
 #![feature(c_variadic)]
 
 use core::fmt;
-use std::ffi::{c_char, c_double, c_int, c_void};
-use std::ffi::{CStr, CString, VaList};
+use std::ffi::{c_char, c_double, c_int};
+use std::ffi::{CStr, VaList};
 
 enum PlaceHolder {
     Int(c_int),

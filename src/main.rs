@@ -1,10 +1,14 @@
 mod ast;
+mod common_utils;
 mod compiler;
+mod function;
 mod lexer;
+mod statement;
 use std::path::Path;
 
 use ast::Parser;
 use compiler::Compiler;
+use inkwell::context::Context;
 use lexer::Lexer;
 
 fn main() {
@@ -27,9 +31,9 @@ fn main() {
 
     let mut parser = Parser::new(lexer);
     let ast = parser.parse_program().unwrap();
-    let compiler = Compiler::new();
 
-    let mut compiler = compiler;
+    let compiler_context = Context::create();
+    let compiler = Compiler::new("module_0".to_string(), &compiler_context);
 
     let output_path = Path::new("output.o");
     let res = compiler.compile(ast, Some(output_path));
