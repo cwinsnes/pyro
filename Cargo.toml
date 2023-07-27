@@ -2,8 +2,8 @@
 name = "pyro"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+author = "Casper Winsnes"
+about = "Compiler for the Pyro programming language"
 
 [dependencies]
 lazy_static = "1.4.0"
@@ -12,6 +12,8 @@ llvm-sys = "140"
 regex = "1.9.1"
 tempfile = "3.5.0"
 libc = "0.2"
+rand = "0.8"
+clap = {version = "4.3.19", features=["derive"]}
 
 [lib]
 path = "staticlib/builtins.rs"
