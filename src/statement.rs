@@ -286,7 +286,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                     ))
                 }
             },
-            _ => unimplemented!(),
+            _ => format!("Not a valid operand type"),
         }
 
         return Ok(op.as_any_value_enum());
@@ -296,10 +296,10 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         match &self.statement {
             ASTNode::Program(_) => todo!(),
             ASTNode::FunctionDeclaration {
-                identifier,
-                arguments,
-                return_type,
-                body,
+                identifier: _,
+                arguments: _,
+                return_type: _,
+                body: _,
             } => Err(format!("Cannot declare function as statement")),
             ASTNode::FunctionCall(_, _) => self.build_function_call(),
             ASTNode::LetDeclaration(_, _) => self.build_assignment(),

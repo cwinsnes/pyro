@@ -97,9 +97,6 @@ impl<'ctx> Compiler<'ctx> {
                     )?;
                 }
 
-                println!("{:?}", self.module.verify());
-                self.module.print_to_stderr();
-
                 // TODO: Everything below this should be moved around
                 //       create functions and remove debug statements.
 
@@ -109,17 +106,17 @@ impl<'ctx> Compiler<'ctx> {
                             .write_to_file(&self.module, FileType::Object, tempfile.path())
                             .expect("Could not write module to file");
 
-                        // let temppath = tempfile
-                        //     .path()
-                        //     .to_str()
-                        //     .expect("Error creating temporary file");
+                        let temppath = tempfile
+                            .path()
+                            .to_str()
+                            .expect("Error creating temporary file");
                         let output_path = output_path.unwrap().to_str().unwrap();
 
                         // TODO: Make this actually look for library instead of hard coded debug path
                         Command::new("clang")
                             .args([
                                 "-no-pie",
-                                tempfile.path().to_str().unwrap(),
+                                temppath,
                                 "-o",
                                 output_path,
                                 "target/debug/libpyro_st.so",
