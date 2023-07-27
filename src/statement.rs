@@ -286,7 +286,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                     ))
                 }
             },
-            _ => format!("Not a valid operand type"),
+            _ => return Err(format!("Not a valid operand type")),
         }
 
         return Ok(op.as_any_value_enum());
