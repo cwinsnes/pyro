@@ -11,14 +11,11 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{
-    AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue,
-};
+use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 
-use crate::ast::{ASTNode, Argument, Operator, VariableType};
-use crate::common_utils::into_basic_value_enum;
+use crate::ast::ASTNode;
+
 use crate::function::PyroFunction;
 
 /// Compiler for the Pyro programming language.
@@ -27,7 +24,6 @@ pub struct Compiler<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
 
-    constant_idx: u64,
     string_constants: HashMap<String, PointerValue<'ctx>>,
 }
 
@@ -41,7 +37,6 @@ impl<'ctx> Compiler<'ctx> {
             module: context.create_module(&module_name),
             builder: context.create_builder(),
 
-            constant_idx: 0,
             string_constants: HashMap::new(),
         }
     }
