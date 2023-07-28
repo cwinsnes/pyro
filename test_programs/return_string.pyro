@@ -1,0 +1,13 @@
+func return_string() > string {
+    return "String here";
+}
+
+func return_arg_string(string a) > string {
+    let b = a;
+    return b;
+}
+
+func main() {
+    print("{string}", return_string());
+    print(return_arg_string("Argument string"));
+}
