@@ -76,6 +76,7 @@ unsafe extern "C" fn print(str: *const c_char, mut vars: ...) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
 
     #[test]
     fn testprint() {
