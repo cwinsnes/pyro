@@ -83,7 +83,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_literal(self) -> Result<AnyValueEnum<'ctx>, String> {
         match self.statement {
             ASTNode::IntegerLiteral(value) => {
-                let const_value = self.context.i64_type().const_int(value as u64, false);
+                let const_value = self.context.i64_type().const_int(value as u64, true);
                 Ok(const_value.as_any_value_enum())
             }
 

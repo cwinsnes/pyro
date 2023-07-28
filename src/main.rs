@@ -32,7 +32,14 @@ fn main() {
     let lexer = Lexer::new(&input_file);
 
     let mut parser = Parser::new(lexer);
-    let ast = parser.parse_program().unwrap();
+    let ast = parser.parse_program();
+
+    if ast.is_err() {
+        println!("{:?}", ast.unwrap_err());
+        return;
+    }
+    
+    let ast = ast.unwrap();
 
     let compiler_context = Context::create();
     let compiler = Compiler::new("module_0".to_string(), &compiler_context);
