@@ -2,8 +2,8 @@
 name = "pyro"
 version = "0.1.0"
 edition = "2021"
-author = "Casper Winsnes"
-about = "Compiler for the Pyro programming language"
+authors = ["Casper Winsnes"]
+description = "Compiler for the Pyro programming language"
 
 [dependencies]
 lazy_static = "1.4.0"

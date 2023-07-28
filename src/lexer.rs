@@ -27,6 +27,7 @@ pub enum Token {
     Func,
     Let,
     Integer,
+    String,
     Return,
 
     // Identifiers and literals
@@ -62,6 +63,7 @@ lazy_static! {
         map.insert("func", Token::Func);
         map.insert("integer", Token::Integer);
         map.insert("return", Token::Return);
+        map.insert("string", Token::String);
         map
     };
 }
@@ -435,6 +437,13 @@ mod tests {
         let mut lexer = lexer_from_str("return");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Return);
+    }
+
+    #[test]
+    fn test_string_token() {
+        let mut lexer = lexer_from_str("string");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::String);
     }
 
     #[test]

@@ -5,6 +5,7 @@ use crate::lexer::Token;
 pub enum VariableType {
     Void,
     Integer,
+    String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -146,6 +147,10 @@ impl<'a> Parser<'a> {
             Token::Integer => {
                 self.advance()?;
                 Ok(VariableType::Integer)
+            }
+            Token::String => {
+                self.advance()?;
+                Ok(VariableType::String)
             }
             token => Err(format!(
                 "Expected variable type token but received token {:?}",
@@ -593,6 +598,45 @@ mod tests {
     }
 
     #[test]
+    fn test_function_returning_string() {
+        let program = "
+        func foo() > string {
+            return \"hello world\";
+        }";
+        let lexer = Lexer::new(program);
+        let mut parser = super::Parser::new(lexer);
+        let ast = parser.parse_program();
+        if ast.is_err() {
+            panic!("{:?}", ast);
+        }
+        let ast = ast.unwrap();
+
+        match ast {
+            ASTNode::Program(functions) => {
+                assert_eq!(functions.len(), 1);
+                let function = functions.first().unwrap();
+                match function {
+                    ASTNode::FunctionDeclaration {
+                        identifier,
+                        arguments,
+                        return_type,
+                        body,
+                    } => {
+                        assert_eq!(identifier, "foo");
+                        assert_eq!(*return_type, VariableType::String);
+                        assert_eq!(arguments.len(), 0);
+                        assert_eq!(body.len(), 1);
+                    }
+                    _ => panic!("Expected function declaration"),
+                }
+            }
+            _ => panic!("Expected program"),
+        }
+    }
+
+    
+
+    #[test]
     fn test_function_with_return_value() {
         let program = "
             func foo(integer x) > integer {
@@ -615,7 +659,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");
@@ -659,7 +703,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");
@@ -710,7 +754,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");

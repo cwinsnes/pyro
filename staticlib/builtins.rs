@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn testprint() {
         unsafe {
-            let format_str = CString::new("Hey {int} {double}!").unwrap();
+            let format_str = CString::new("Hey {int} {float}!").unwrap();
             print(format_str.as_ptr(), 1, 3.2 as c_double);
 
             let format_str = CString::new("Hey {string}!").unwrap();
