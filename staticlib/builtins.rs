@@ -6,7 +6,7 @@ use std::ffi::{CStr, VaList};
 
 enum PlaceHolder {
     Int(c_int),
-    Double(c_double),
+    Float(c_double),
     String(*const c_char),
 }
 
@@ -14,7 +14,7 @@ impl PlaceHolder {
     unsafe fn from_string(placeholder: &str, args: &mut VaList) -> PlaceHolder {
         match placeholder {
             "{int}" => PlaceHolder::Int(args.arg::<c_int>()),
-            "{float}" => PlaceHolder::Double(args.arg::<c_double>()),
+            "{float}" => PlaceHolder::Float(args.arg::<c_double>()),
             "{string}" => PlaceHolder::String(args.arg::<*const c_char>()),
             &_ => {
                 panic!("Invalid placeholder type")
@@ -27,10 +27,10 @@ impl fmt::Display for PlaceHolder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PlaceHolder::Int(x) => {
-                write!(f, "{}", x.to_string())
+                write!(f, "{:?}", x)
             }
-            PlaceHolder::Double(x) => {
-                write!(f, "{}", x.to_string())
+            PlaceHolder::Float(x) => {
+                write!(f, "{:?}", x)
             }
             PlaceHolder::String(x) => unsafe {
                 let cstring = CStr::from_ptr(*x);

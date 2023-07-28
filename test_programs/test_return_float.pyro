@@ -1,0 +1,13 @@
+func return_float() > float {
+    return 3.14;
+}
+
+func return_arg_float(float a) > float {
+    let b = a;
+    return b;
+}
+
+func main() {
+    print("{float}", return_float());
+    print("{float}", return_arg_float(55.125));
+}

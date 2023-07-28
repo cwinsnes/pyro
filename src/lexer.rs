@@ -16,17 +16,19 @@
 //! }
 //! ```
 extern crate lazy_static;
+
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Keywords
     Func,
     Let,
     Integer,
+    Float,
     String,
     Return,
 
@@ -34,6 +36,7 @@ pub enum Token {
     Identifier(String),
     IntegerLiteral(i64),
     StringLiteral(String),
+    FloatLiteral(f64),
 
     // Operators
     Plus,
@@ -62,6 +65,7 @@ lazy_static! {
         map.insert("let", Token::Let);
         map.insert("func", Token::Func);
         map.insert("integer", Token::Integer);
+        map.insert("float", Token::Float);
         map.insert("return", Token::Return);
         map.insert("string", Token::String);
         map
@@ -101,19 +105,41 @@ impl<'a> Lexer<'a> {
     /// Will continue scanning until a non-decimal number value is
     /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number(&mut self) -> Result<i64, String> {
+    fn scan_number (&mut self) -> Result<Token, String> {
         let mut number = String::new();
+        let mut is_float = false;
         while let Some(&c) = self.input.peek() {
             if c.is_digit(10) {
                 number.push(c);
                 self.input.next();
-            } else if c.is_alphabetic() {
+            } else if c == '.' {
+                if is_float {
+                    return Err(format!("Multiple decimal points in number literal"));
+                }
+                is_float = true;
+                number.push(c);
+                self.input.next();
+            }
+            else if c.is_alphabetic() {
                 return Err(format!("Invalid number literal: {:?}{:?}", number, c));
             } else {
                 break;
             }
         }
-        Ok(number.parse().unwrap())
+
+        if is_float {
+            let number = number.parse::<f64>();
+            if number.is_err() {
+                return Err(format!("Error when scanning floating literal"));
+            }
+            Ok(Token::FloatLiteral(number.unwrap()))
+        } else {
+            let number = number.parse::<i64>();
+            if number.is_err() {
+                return Err(format!("Error when scanning integer literal"));
+            }
+            Ok(Token::IntegerLiteral(number.unwrap()))
+        }
     }
 
     /// Scan input for a valid identifier value.
@@ -183,8 +209,7 @@ impl<'a> Lexer<'a> {
             let return_token;
             match c {
                 '0'..='9' => {
-                    let number = self.scan_number()?;
-                    return_token = Token::IntegerLiteral(number);
+                    return_token = self.scan_number()?;
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let identifier = self.scan_identifier();
@@ -348,6 +373,14 @@ mod tests {
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::IntegerLiteral(42));
     }
+
+    #[test]
+    fn test_floating_point_literal_token() {
+        let mut lexer = lexer_from_str("42.42");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::FloatLiteral(42.42));
+    }
+
     #[test]
     fn test_plus_token() {
         let mut lexer = lexer_from_str("+");

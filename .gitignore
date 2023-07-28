@@ -34,4 +34,5 @@ Cargo.lock
 .history
 .ionide
 
+a.out
 output.o

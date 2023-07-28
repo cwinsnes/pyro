@@ -5,6 +5,7 @@ use crate::lexer::Token;
 pub enum VariableType {
     Void,
     Integer,
+    Float,
     String,
 }
 
@@ -57,6 +58,7 @@ pub enum ASTNode {
     },
     Identifier(String),
     IntegerLiteral(i64),
+    FloatLiteral(f64),
     StringLiteral(String),
 }
 
@@ -147,6 +149,10 @@ impl<'a> Parser<'a> {
             Token::Integer => {
                 self.advance()?;
                 Ok(VariableType::Integer)
+            }
+            Token::Float => {
+                self.advance()?;
+                Ok(VariableType::Float)
             }
             Token::String => {
                 self.advance()?;
@@ -363,6 +369,10 @@ impl<'a> Parser<'a> {
             Token::IntegerLiteral(literal) => {
                 self.advance()?;
                 left = ASTNode::IntegerLiteral(literal);
+            }
+            Token::FloatLiteral(literal) => {
+                self.advance()?;
+                left = ASTNode::FloatLiteral(literal);
             }
             Token::Identifier(literal) => {
                 if self.peek_ahead() == Token::OpenParen {

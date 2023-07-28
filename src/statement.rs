@@ -73,6 +73,11 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 Ok(const_value.as_any_value_enum())
             }
 
+            ASTNode::FloatLiteral(value) => {
+                let const_value = self.context.f64_type().const_float(value as f64);
+                Ok(const_value.as_any_value_enum())
+            }
+
             ASTNode::StringLiteral(string) => {
                 if self.string_globals.contains_key(string.as_str()) {
                     let ptr = self.string_globals.get(string.as_str()).unwrap();
@@ -146,8 +151,12 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_function_call(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::FunctionCall(function_name, arguments) => {
-                let function = self.module.get_function(function_name.as_str()).unwrap();
+                let function = self.module.get_function(function_name.as_str());
+                if function.is_none() {
+                    return Err(format!("Could not find function `{}`", function_name));
+                }
 
+                let function = function.unwrap();
                 let arguments = arguments
                     .iter()
                     .map(|a| {
@@ -294,7 +303,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
 
     fn compile(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
-            ASTNode::Program(_) => todo!(),
+            ASTNode::Program(_) => Err(format!("Cannot declare program as statement")),
             ASTNode::FunctionDeclaration {
                 identifier: _,
                 arguments: _,
@@ -305,7 +314,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
             ASTNode::LetDeclaration(_, _) => self.build_assignment(),
             ASTNode::ReturnStatement(_) => self.build_return(),
             ASTNode::Identifier(_) => self.load_identifier(),
-            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) => self.build_literal(),
+            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) | ASTNode::FloatLiteral(_) => self.build_literal(),
             ASTNode::BinaryOp {
                 left: _,
                 operator: _,
