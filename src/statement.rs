@@ -13,6 +13,20 @@ use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue,
 };
 
+macro_rules! recursive_statement_compile {
+    ($curr_stmt: expr, $eval_stmt: expr) => {
+        PyroStatement::compile_statement(
+            $curr_stmt.context,
+            $curr_stmt.module,
+            $curr_stmt.builder,
+            $curr_stmt.entry_block,
+            $curr_stmt.local_variables,
+            $curr_stmt.string_globals,
+            $eval_stmt,
+        )
+    }
+}
+
 pub(crate) struct PyroStatement<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
@@ -125,15 +139,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_assignment(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::LetDeclaration(variable_name, expression) => {
-                let value = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *expression.clone(),
-                )?;
+                let value = recursive_statement_compile!(self, *expression.clone())?;
                 let value = into_basic_value_enum(value)?;
 
                 let variable =
@@ -159,16 +165,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 let function = function.unwrap();
                 let arguments = arguments
                     .iter()
-                    .map(|a| {
-                        PyroStatement::compile_statement(
-                            self.context,
-                            self.module,
-                            self.builder,
-                            self.entry_block,
-                            self.local_variables,
-                            self.string_globals,
-                            a.clone(),
-                        )
+                    .map(|a| {recursive_statement_compile!(self, a.clone())
                     })
                     .collect::<Result<Vec<AnyValueEnum>, String>>()?;
 
@@ -196,15 +193,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_return(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::ReturnStatement(expression) => {
-                let value = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *expression.clone(),
-                )?;
+                let value = recursive_statement_compile!(self, *expression.clone())?;
                 let value = into_basic_value_enum(value)?;
 
                 let return_instruction = self.builder.build_return(Some(&value));
@@ -221,25 +210,8 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 operator,
                 right,
             } => {
-                let lhs = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *left.clone(),
-                )?;
-
-                let rhs = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *right.clone(),
-                )?;
+                let lhs = recursive_statement_compile!(self, *left.clone())?;
+                let rhs = recursive_statement_compile!(self, *right.clone())?;
 
                 let lhs = into_basic_value_enum(lhs)?;
                 let rhs = into_basic_value_enum(rhs)?;
@@ -263,17 +235,14 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         right: BasicValueEnum<'ctx>,
         operator: Operator,
     ) -> Result<AnyValueEnum<'ctx>, String> {
-        let lhs;
-        let rhs;
-        let op;
-
         let op_type = left.get_type();
 
         match op_type {
             BasicTypeEnum::IntType(_) => match right.get_type() {
                 BasicTypeEnum::IntType(_) => {
-                    lhs = left.into_int_value();
-                    rhs = right.into_int_value();
+                    let op;
+                    let lhs = left.into_int_value();
+                    let rhs = right.into_int_value();
 
                     match operator {
                         Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
@@ -287,18 +256,44 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                             op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
                         }
                     }
+                    return Ok(op.as_any_value_enum());
                 }
                 _ => {
                     return Err(format!(
-                        "{:?} and {:?} are not of the same type for add",
+                        "Cannot perform integer op: {:?} is an integer while {:?} is not.",
                         left, right
                     ))
                 }
             },
+            BasicTypeEnum::FloatType(_) => match right.get_type() {
+                BasicTypeEnum::FloatType(_) => {
+                    let op;
+                    let lhs = left.into_float_value();
+                    let rhs = right.into_float_value();
+                    match operator {
+                        Operator::Plus => op = self.builder.build_float_add(lhs, rhs, "floataddition"),
+                        Operator::Minus => {
+                            op = self.builder.build_float_sub(lhs, rhs, "floatsubtraction")
+                        }
+                        Operator::Multiplication => {
+                            op = self.builder.build_float_mul(lhs, rhs, "floatmultiplication")
+                        }
+                        Operator::Division => {
+                            op = self.builder.build_float_div(lhs, rhs, "floatdivision")
+                        }
+                    }
+                    return Ok(op.as_any_value_enum());
+                }
+                _ => {
+                    return Err(format!(
+                        "Cannot perform float op: {:?} is an float while {:?} is not.",
+                        left, right
+                        ))
+                        }
+                    }
+
             _ => return Err(format!("Not a valid operand type")),
         }
-
-        return Ok(op.as_any_value_enum());
     }
 
     fn compile(self) -> Result<AnyValueEnum<'ctx>, String> {

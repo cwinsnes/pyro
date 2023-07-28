@@ -1,0 +1,24 @@
+func float_adding(float a, float b) > float {
+    return a + b;
+}
+
+func float_subtract(float a, float b) > float {
+    return a - b;
+}
+
+func float_multiply(float a, float b) > float {
+    return a * b;
+}
+
+func float_divide(float a, float b) > float {
+    return a / b;
+}
+
+func main() {
+    let a = 4.1;
+    let b = 3.2;
+    print("{float} + {float} = {float}", a, b, float_adding(a, b));
+    print("{float} - {float} = {float}", a, b, float_subtract(a, b));
+    print("{float} * {float} = {float}", a, b, float_multiply(a, b));
+    print("{float} / {float} = {float}", a, b, float_divide(a, b));
+}
