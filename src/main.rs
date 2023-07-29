@@ -19,6 +19,12 @@ struct Args {
 
     #[arg(short, long, help = "Write output to file. Defaults to ./a.out")]
     output_path: Option<PathBuf>,
+
+    #[arg(
+        long,
+        help = "Print LLVM IR to stdout. If enabled, output path is ignored"
+    )]
+    print_llvm: bool,
 }
 
 fn main() {
@@ -38,15 +44,30 @@ fn main() {
         println!("{:?}", ast.unwrap_err());
         return;
     }
-    
+
     let ast = ast.unwrap();
 
     let compiler_context = Context::create();
     let compiler = Compiler::new("module_0".to_string(), &compiler_context);
 
     let output_path = args.output_path.unwrap_or(PathBuf::from("a.out"));
-    let res = compiler.compile(ast, Some(output_path.as_path()));
-    if res.is_err() {
-        println!("{:?}", res);
+    let res;
+    if args.print_llvm {
+        res = compiler.compile(ast, None);
+        if res.is_ok() {
+            println!(
+                "{}",
+                res.unwrap()
+                    .expect("Invalid LLVM String generated")
+                    .to_string()
+            );
+        } else {
+            println!("{}", res.unwrap_err());
+        }
+    } else {
+        res = compiler.compile(ast, Some(output_path.as_path()));
+        if res.is_err() {
+            println!("{:?}", res);
+        }
     }
 }

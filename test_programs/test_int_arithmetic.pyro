@@ -17,9 +17,9 @@ func int_divide(integer a, integer b) > integer {
 func main() {
     let a = 3;
     let b = 4;
-    print("{int} + {int} = {int}", a, b, int_adding(a, b));
-    print("{int} - {int} = {int}", a, b, int_subtract(a, b));
-    print("{int} * {int} = {int}", a, b, int_multiply(a, b));
-    print("{int} / {int} = {int}", a, b, int_divide(a, b));
-    print("{int} / {int} = {int}", 8, 4, 8 / 4);
+    print("{integer} + {integer} = {integer}", a, b, int_adding(a, b));
+    print("{integer} - {integer} = {integer}", a, b, int_subtract(a, b));
+    print("{integer} * {integer} = {integer}", a, b, int_multiply(a, b));
+    print("{integer} / {integer} = {integer}", a, b, int_divide(a, b));
+    print("{integer} / {integer} = {integer}", 8, 4, 8 / 4);
 }

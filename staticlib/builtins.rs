@@ -8,12 +8,14 @@ enum PlaceHolder {
     Int(c_int),
     Float(c_double),
     String(*const c_char),
+    Boolean(c_int),
 }
 
 impl PlaceHolder {
     unsafe fn from_string(placeholder: &str, args: &mut VaList) -> PlaceHolder {
         match placeholder {
-            "{int}" => PlaceHolder::Int(args.arg::<c_int>()),
+            "{integer}" => PlaceHolder::Int(args.arg::<c_int>()),
+            "{boolean}" => PlaceHolder::Boolean(args.arg::<c_int>()),
             "{float}" => PlaceHolder::Float(args.arg::<c_double>()),
             "{string}" => PlaceHolder::String(args.arg::<*const c_char>()),
             &_ => {
@@ -31,6 +33,10 @@ impl fmt::Display for PlaceHolder {
             }
             PlaceHolder::Float(x) => {
                 write!(f, "{:?}", x)
+            }
+            PlaceHolder::Boolean(x) => {
+                let x = if *x == 0 { "false" } else { "true" };
+                write!(f, "{}", x)
             }
             PlaceHolder::String(x) => unsafe {
                 let cstring = CStr::from_ptr(*x);
@@ -81,7 +87,7 @@ mod tests {
     #[test]
     fn testprint() {
         unsafe {
-            let format_str = CString::new("Hey {int} {float}!").unwrap();
+            let format_str = CString::new("Hey {integer} {float}!").unwrap();
             print(format_str.as_ptr(), 1, 3.2 as c_double);
 
             let format_str = CString::new("Hey {string}!").unwrap();

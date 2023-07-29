@@ -27,6 +27,7 @@ pub enum Token {
     // Keywords
     Func,
     Let,
+    Boolean,
     Integer,
     Float,
     String,
@@ -37,6 +38,7 @@ pub enum Token {
     IntegerLiteral(i64),
     StringLiteral(String),
     FloatLiteral(f64),
+    BooleanLiteral(bool),
 
     // Operators
     Plus,
@@ -68,6 +70,9 @@ lazy_static! {
         map.insert("float", Token::Float);
         map.insert("return", Token::Return);
         map.insert("string", Token::String);
+        map.insert("boolean", Token::Boolean);
+        map.insert("true", Token::BooleanLiteral(true));
+        map.insert("false", Token::BooleanLiteral(false));
         map
     };
 }
@@ -105,7 +110,7 @@ impl<'a> Lexer<'a> {
     /// Will continue scanning until a non-decimal number value is
     /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number (&mut self) -> Result<Token, String> {
+    fn scan_number(&mut self) -> Result<Token, String> {
         let mut number = String::new();
         let mut is_float = false;
         while let Some(&c) = self.input.peek() {
@@ -119,8 +124,7 @@ impl<'a> Lexer<'a> {
                 is_float = true;
                 number.push(c);
                 self.input.next();
-            }
-            else if c.is_alphabetic() {
+            } else if c.is_alphabetic() {
                 return Err(format!("Invalid number literal: {:?}{:?}", number, c));
             } else {
                 break;
@@ -512,5 +516,19 @@ mod tests {
         let mut lexer = lexer_from_str("4test32;");
         let token = lexer.next_token();
         assert!(token.is_err());
+    }
+
+    #[test]
+    fn test_true_token() {
+        let mut lexer = lexer_from_str("true");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::BooleanLiteral(true));
+    }
+
+    #[test]
+    fn test_false_token() {
+        let mut lexer = lexer_from_str("false");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::BooleanLiteral(false));
     }
 }

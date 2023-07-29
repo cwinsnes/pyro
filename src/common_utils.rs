@@ -1,9 +1,9 @@
 extern crate inkwell;
 use crate::ast::VariableType;
-use inkwell::AddressSpace;
 use inkwell::context::Context;
 use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{AnyValueEnum, BasicValue, BasicValueEnum};
+use inkwell::AddressSpace;
 use rand::{distributions::Alphanumeric, Rng};
 
 pub fn get_type_from_variable_type<'ctx>(
@@ -13,7 +13,13 @@ pub fn get_type_from_variable_type<'ctx>(
     match variable_type {
         VariableType::Integer => Some(context.i64_type().as_basic_type_enum()),
         VariableType::Float => Some(context.f64_type().as_basic_type_enum()),
-        VariableType::String => Some(context.i8_type().ptr_type(AddressSpace::default()).as_basic_type_enum()),
+        VariableType::Boolean => Some(context.bool_type().as_basic_type_enum()),
+        VariableType::String => Some(
+            context
+                .i8_type()
+                .ptr_type(AddressSpace::default())
+                .as_basic_type_enum(),
+        ),
         VariableType::Void => None,
     }
 }

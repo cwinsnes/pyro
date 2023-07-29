@@ -92,6 +92,11 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 Ok(const_value.as_any_value_enum())
             }
 
+            ASTNode::BooleanLiteral(value) => {
+                let const_value = self.context.bool_type().const_int(value as u64, false);
+                Ok(const_value.as_any_value_enum())
+            }
+
             ASTNode::StringLiteral(string) => {
                 if self.string_globals.contains_key(string.as_str()) {
                     let ptr = self.string_globals.get(string.as_str()).unwrap();
@@ -112,6 +117,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 self.string_globals.insert(string, ptr);
                 Ok(ptr.as_any_value_enum())
             }
+
             _ => Err(format!("{:?} is not a literal", self.statement)),
         }
     }
@@ -245,6 +251,16 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 let lhs = left.into_int_value();
                 let rhs = right.into_int_value();
 
+                if lhs.get_type().get_bit_width() == 1 || rhs.get_type().get_bit_width() == 1 {
+                    return Err(format!("Cannot perform binary operation on a bool"));
+                }
+
+                if lhs.get_type().get_bit_width() != rhs.get_type().get_bit_width() {
+                    return Err(format!(
+                        "Cannot perform binary operation on ints of varying bit widths."
+                    ));
+                }
+
                 match operator {
                     Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
                     Operator::Minus => op = self.builder.build_int_sub(lhs, rhs, "intsubtraction"),
@@ -261,6 +277,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 let op;
                 let lhs = left.into_float_value();
                 let rhs = right.into_float_value();
+
                 match operator {
                     Operator::Plus => op = self.builder.build_float_add(lhs, rhs, "floataddition"),
                     Operator::Minus => {
@@ -294,9 +311,10 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
             ASTNode::LetDeclaration(_, _) => self.build_assignment(),
             ASTNode::ReturnStatement(_) => self.build_return(),
             ASTNode::Identifier(_) => self.load_identifier(),
-            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) | ASTNode::FloatLiteral(_) => {
-                self.build_literal()
-            }
+            ASTNode::IntegerLiteral(_)
+            | ASTNode::StringLiteral(_)
+            | ASTNode::FloatLiteral(_)
+            | ASTNode::BooleanLiteral(_) => self.build_literal(),
             ASTNode::BinaryOp {
                 left: _,
                 operator: _,

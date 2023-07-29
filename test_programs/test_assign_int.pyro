@@ -1,7 +1,7 @@
 func main() {
     let floating_point = 3;
-    print("{int}", floating_point);
+    print("{integer}", floating_point);
 
     let floating_point = 4;
-    print("{int}", floating_point);
+    print("{integer}", floating_point);
 }
