@@ -24,7 +24,7 @@ macro_rules! recursive_statement_compile {
             $curr_stmt.string_globals,
             $eval_stmt,
         )
-    }
+    };
 }
 
 pub(crate) struct PyroStatement<'a, 'ctx> {
@@ -165,8 +165,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 let function = function.unwrap();
                 let arguments = arguments
                     .iter()
-                    .map(|a| {recursive_statement_compile!(self, a.clone())
-                    })
+                    .map(|a| recursive_statement_compile!(self, a.clone()))
                     .collect::<Result<Vec<AnyValueEnum>, String>>()?;
 
                 let arguments = arguments
@@ -236,62 +235,48 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         operator: Operator,
     ) -> Result<AnyValueEnum<'ctx>, String> {
         let op_type = left.get_type();
+        if op_type != right.get_type() {
+            return Err(format!("{:?} is not the same type as {:?}", left, right));
+        }
 
         match op_type {
-            BasicTypeEnum::IntType(_) => match right.get_type() {
-                BasicTypeEnum::IntType(_) => {
-                    let op;
-                    let lhs = left.into_int_value();
-                    let rhs = right.into_int_value();
+            BasicTypeEnum::IntType(_) => {
+                let op;
+                let lhs = left.into_int_value();
+                let rhs = right.into_int_value();
 
-                    match operator {
-                        Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
-                        Operator::Minus => {
-                            op = self.builder.build_int_sub(lhs, rhs, "intsubtraction")
-                        }
-                        Operator::Multiplication => {
-                            op = self.builder.build_int_mul(lhs, rhs, "intmultiplication")
-                        }
-                        Operator::Division => {
-                            op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
-                        }
+                match operator {
+                    Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
+                    Operator::Minus => op = self.builder.build_int_sub(lhs, rhs, "intsubtraction"),
+                    Operator::Multiplication => {
+                        op = self.builder.build_int_mul(lhs, rhs, "intmultiplication")
                     }
-                    return Ok(op.as_any_value_enum());
-                }
-                _ => {
-                    return Err(format!(
-                        "Cannot perform integer op: {:?} is an integer while {:?} is not.",
-                        left, right
-                    ))
-                }
-            },
-            BasicTypeEnum::FloatType(_) => match right.get_type() {
-                BasicTypeEnum::FloatType(_) => {
-                    let op;
-                    let lhs = left.into_float_value();
-                    let rhs = right.into_float_value();
-                    match operator {
-                        Operator::Plus => op = self.builder.build_float_add(lhs, rhs, "floataddition"),
-                        Operator::Minus => {
-                            op = self.builder.build_float_sub(lhs, rhs, "floatsubtraction")
-                        }
-                        Operator::Multiplication => {
-                            op = self.builder.build_float_mul(lhs, rhs, "floatmultiplication")
-                        }
-                        Operator::Division => {
-                            op = self.builder.build_float_div(lhs, rhs, "floatdivision")
-                        }
+                    Operator::Division => {
+                        op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
                     }
-                    return Ok(op.as_any_value_enum());
                 }
-                _ => {
-                    return Err(format!(
-                        "Cannot perform float op: {:?} is an float while {:?} is not.",
-                        left, right
-                        ))
-                        }
+                return Ok(op.as_any_value_enum());
+            }
+            BasicTypeEnum::FloatType(_) => {
+                let op;
+                let lhs = left.into_float_value();
+                let rhs = right.into_float_value();
+                match operator {
+                    Operator::Plus => op = self.builder.build_float_add(lhs, rhs, "floataddition"),
+                    Operator::Minus => {
+                        op = self.builder.build_float_sub(lhs, rhs, "floatsubtraction")
                     }
-
+                    Operator::Multiplication => {
+                        op = self
+                            .builder
+                            .build_float_mul(lhs, rhs, "floatmultiplication")
+                    }
+                    Operator::Division => {
+                        op = self.builder.build_float_div(lhs, rhs, "floatdivision")
+                    }
+                }
+                return Ok(op.as_any_value_enum());
+            }
             _ => return Err(format!("Not a valid operand type")),
         }
     }
@@ -309,7 +294,9 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
             ASTNode::LetDeclaration(_, _) => self.build_assignment(),
             ASTNode::ReturnStatement(_) => self.build_return(),
             ASTNode::Identifier(_) => self.load_identifier(),
-            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) | ASTNode::FloatLiteral(_) => self.build_literal(),
+            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) | ASTNode::FloatLiteral(_) => {
+                self.build_literal()
+            }
             ASTNode::BinaryOp {
                 left: _,
                 operator: _,
