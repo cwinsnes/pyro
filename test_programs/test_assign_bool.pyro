@@ -1,0 +1,9 @@
+func call_bool() > boolean {
+    return true;
+}
+func main() {
+    let x = true;
+    let y = false;
+
+    print("{boolean} {boolean} {integer}", x, y, call_bool());
+}

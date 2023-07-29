@@ -136,8 +136,6 @@ impl<'ctx> Compiler<'ctx> {
 
 // Todo: Write tests
 // TODO: Make it more reasonable to compare compiler output to expected output.
+//       Maybe write some test programs and pipe output somewhere?
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ast::{ASTNode, Argument, VariableType};
-}
+mod tests {}

@@ -13,6 +13,20 @@ use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue,
 };
 
+macro_rules! recursive_statement_compile {
+    ($curr_stmt: expr, $eval_stmt: expr) => {
+        PyroStatement::compile_statement(
+            $curr_stmt.context,
+            $curr_stmt.module,
+            $curr_stmt.builder,
+            $curr_stmt.entry_block,
+            $curr_stmt.local_variables,
+            $curr_stmt.string_globals,
+            $eval_stmt,
+        )
+    };
+}
+
 pub(crate) struct PyroStatement<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
@@ -69,7 +83,17 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_literal(self) -> Result<AnyValueEnum<'ctx>, String> {
         match self.statement {
             ASTNode::IntegerLiteral(value) => {
-                let const_value = self.context.i64_type().const_int(value as u64, false);
+                let const_value = self.context.i64_type().const_int(value as u64, true);
+                Ok(const_value.as_any_value_enum())
+            }
+
+            ASTNode::FloatLiteral(value) => {
+                let const_value = self.context.f64_type().const_float(value as f64);
+                Ok(const_value.as_any_value_enum())
+            }
+
+            ASTNode::BooleanLiteral(value) => {
+                let const_value = self.context.bool_type().const_int(value as u64, false);
                 Ok(const_value.as_any_value_enum())
             }
 
@@ -93,6 +117,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 self.string_globals.insert(string, ptr);
                 Ok(ptr.as_any_value_enum())
             }
+
             _ => Err(format!("{:?} is not a literal", self.statement)),
         }
     }
@@ -120,15 +145,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_assignment(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::LetDeclaration(variable_name, expression) => {
-                let value = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *expression.clone(),
-                )?;
+                let value = recursive_statement_compile!(self, *expression.clone())?;
                 let value = into_basic_value_enum(value)?;
 
                 let variable =
@@ -146,21 +163,15 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_function_call(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::FunctionCall(function_name, arguments) => {
-                let function = self.module.get_function(function_name.as_str()).unwrap();
+                let function = self.module.get_function(function_name.as_str());
+                if function.is_none() {
+                    return Err(format!("Could not find function `{}`", function_name));
+                }
 
+                let function = function.unwrap();
                 let arguments = arguments
                     .iter()
-                    .map(|a| {
-                        PyroStatement::compile_statement(
-                            self.context,
-                            self.module,
-                            self.builder,
-                            self.entry_block,
-                            self.local_variables,
-                            self.string_globals,
-                            a.clone(),
-                        )
-                    })
+                    .map(|a| recursive_statement_compile!(self, a.clone()))
                     .collect::<Result<Vec<AnyValueEnum>, String>>()?;
 
                 let arguments = arguments
@@ -187,15 +198,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn build_return(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::ReturnStatement(expression) => {
-                let value = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *expression.clone(),
-                )?;
+                let value = recursive_statement_compile!(self, *expression.clone())?;
                 let value = into_basic_value_enum(value)?;
 
                 let return_instruction = self.builder.build_return(Some(&value));
@@ -212,25 +215,8 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 operator,
                 right,
             } => {
-                let lhs = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *left.clone(),
-                )?;
-
-                let rhs = PyroStatement::compile_statement(
-                    self.context,
-                    self.module,
-                    self.builder,
-                    self.entry_block,
-                    self.local_variables,
-                    self.string_globals,
-                    *right.clone(),
-                )?;
+                let lhs = recursive_statement_compile!(self, *left.clone())?;
+                let rhs = recursive_statement_compile!(self, *right.clone())?;
 
                 let lhs = into_basic_value_enum(lhs)?;
                 let rhs = into_basic_value_enum(rhs)?;
@@ -254,47 +240,67 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         right: BasicValueEnum<'ctx>,
         operator: Operator,
     ) -> Result<AnyValueEnum<'ctx>, String> {
-        let lhs;
-        let rhs;
-        let op;
-
         let op_type = left.get_type();
-
-        match op_type {
-            BasicTypeEnum::IntType(_) => match right.get_type() {
-                BasicTypeEnum::IntType(_) => {
-                    lhs = left.into_int_value();
-                    rhs = right.into_int_value();
-
-                    match operator {
-                        Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
-                        Operator::Minus => {
-                            op = self.builder.build_int_sub(lhs, rhs, "intsubtraction")
-                        }
-                        Operator::Multiplication => {
-                            op = self.builder.build_int_mul(lhs, rhs, "intmultiplication")
-                        }
-                        Operator::Division => {
-                            op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
-                        }
-                    }
-                }
-                _ => {
-                    return Err(format!(
-                        "{:?} and {:?} are not of the same type for add",
-                        left, right
-                    ))
-                }
-            },
-            _ => return Err(format!("Not a valid operand type")),
+        if op_type != right.get_type() {
+            return Err(format!("{:?} is not the same type as {:?}", left, right));
         }
 
-        return Ok(op.as_any_value_enum());
+        match op_type {
+            BasicTypeEnum::IntType(_) => {
+                let op;
+                let lhs = left.into_int_value();
+                let rhs = right.into_int_value();
+
+                if lhs.get_type().get_bit_width() == 1 || rhs.get_type().get_bit_width() == 1 {
+                    return Err(format!("Cannot perform binary operation on a bool"));
+                }
+
+                if lhs.get_type().get_bit_width() != rhs.get_type().get_bit_width() {
+                    return Err(format!(
+                        "Cannot perform binary operation on ints of varying bit widths."
+                    ));
+                }
+
+                match operator {
+                    Operator::Plus => op = self.builder.build_int_add(lhs, rhs, "intaddition"),
+                    Operator::Minus => op = self.builder.build_int_sub(lhs, rhs, "intsubtraction"),
+                    Operator::Multiplication => {
+                        op = self.builder.build_int_mul(lhs, rhs, "intmultiplication")
+                    }
+                    Operator::Division => {
+                        op = self.builder.build_int_signed_div(lhs, rhs, "intdivision")
+                    }
+                }
+                return Ok(op.as_any_value_enum());
+            }
+            BasicTypeEnum::FloatType(_) => {
+                let op;
+                let lhs = left.into_float_value();
+                let rhs = right.into_float_value();
+
+                match operator {
+                    Operator::Plus => op = self.builder.build_float_add(lhs, rhs, "floataddition"),
+                    Operator::Minus => {
+                        op = self.builder.build_float_sub(lhs, rhs, "floatsubtraction")
+                    }
+                    Operator::Multiplication => {
+                        op = self
+                            .builder
+                            .build_float_mul(lhs, rhs, "floatmultiplication")
+                    }
+                    Operator::Division => {
+                        op = self.builder.build_float_div(lhs, rhs, "floatdivision")
+                    }
+                }
+                return Ok(op.as_any_value_enum());
+            }
+            _ => return Err(format!("Not a valid operand type")),
+        }
     }
 
     fn compile(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
-            ASTNode::Program(_) => todo!(),
+            ASTNode::Program(_) => Err(format!("Cannot declare program as statement")),
             ASTNode::FunctionDeclaration {
                 identifier: _,
                 arguments: _,
@@ -305,7 +311,10 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
             ASTNode::LetDeclaration(_, _) => self.build_assignment(),
             ASTNode::ReturnStatement(_) => self.build_return(),
             ASTNode::Identifier(_) => self.load_identifier(),
-            ASTNode::IntegerLiteral(_) | ASTNode::StringLiteral(_) => self.build_literal(),
+            ASTNode::IntegerLiteral(_)
+            | ASTNode::StringLiteral(_)
+            | ASTNode::FloatLiteral(_)
+            | ASTNode::BooleanLiteral(_) => self.build_literal(),
             ASTNode::BinaryOp {
                 left: _,
                 operator: _,

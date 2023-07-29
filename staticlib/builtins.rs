@@ -6,15 +6,17 @@ use std::ffi::{CStr, VaList};
 
 enum PlaceHolder {
     Int(c_int),
-    Double(c_double),
+    Float(c_double),
     String(*const c_char),
+    Boolean(c_int),
 }
 
 impl PlaceHolder {
     unsafe fn from_string(placeholder: &str, args: &mut VaList) -> PlaceHolder {
         match placeholder {
-            "{int}" => PlaceHolder::Int(args.arg::<c_int>()),
-            "{float}" => PlaceHolder::Double(args.arg::<c_double>()),
+            "{integer}" => PlaceHolder::Int(args.arg::<c_int>()),
+            "{boolean}" => PlaceHolder::Boolean(args.arg::<c_int>()),
+            "{float}" => PlaceHolder::Float(args.arg::<c_double>()),
             "{string}" => PlaceHolder::String(args.arg::<*const c_char>()),
             &_ => {
                 panic!("Invalid placeholder type")
@@ -27,10 +29,14 @@ impl fmt::Display for PlaceHolder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PlaceHolder::Int(x) => {
-                write!(f, "{}", x.to_string())
+                write!(f, "{:?}", x)
             }
-            PlaceHolder::Double(x) => {
-                write!(f, "{}", x.to_string())
+            PlaceHolder::Float(x) => {
+                write!(f, "{:?}", x)
+            }
+            PlaceHolder::Boolean(x) => {
+                let x = if *x == 0 { "false" } else { "true" };
+                write!(f, "{}", x)
             }
             PlaceHolder::String(x) => unsafe {
                 let cstring = CStr::from_ptr(*x);
@@ -76,11 +82,12 @@ unsafe extern "C" fn print(str: *const c_char, mut vars: ...) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
 
     #[test]
     fn testprint() {
         unsafe {
-            let format_str = CString::new("Hey {int} {double}!").unwrap();
+            let format_str = CString::new("Hey {integer} {float}!").unwrap();
             print(format_str.as_ptr(), 1, 3.2 as c_double);
 
             let format_str = CString::new("Hey {string}!").unwrap();

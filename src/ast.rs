@@ -5,6 +5,9 @@ use crate::lexer::Token;
 pub enum VariableType {
     Void,
     Integer,
+    Boolean,
+    Float,
+    String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,7 +59,9 @@ pub enum ASTNode {
     },
     Identifier(String),
     IntegerLiteral(i64),
+    FloatLiteral(f64),
     StringLiteral(String),
+    BooleanLiteral(bool),
 }
 
 /// Parser for the simple Pyro programming language.
@@ -146,6 +151,18 @@ impl<'a> Parser<'a> {
             Token::Integer => {
                 self.advance()?;
                 Ok(VariableType::Integer)
+            }
+            Token::Float => {
+                self.advance()?;
+                Ok(VariableType::Float)
+            }
+            Token::Boolean => {
+                self.advance()?;
+                Ok(VariableType::Boolean)
+            }
+            Token::String => {
+                self.advance()?;
+                Ok(VariableType::String)
             }
             token => Err(format!(
                 "Expected variable type token but received token {:?}",
@@ -359,6 +376,10 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 left = ASTNode::IntegerLiteral(literal);
             }
+            Token::FloatLiteral(literal) => {
+                self.advance()?;
+                left = ASTNode::FloatLiteral(literal);
+            }
             Token::Identifier(literal) => {
                 if self.peek_ahead() == Token::OpenParen {
                     left = self.parse_function_call()?;
@@ -366,6 +387,10 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                     left = ASTNode::Identifier(literal);
                 }
+            }
+            Token::BooleanLiteral(literal) => {
+                self.advance()?;
+                left = ASTNode::BooleanLiteral(literal);
             }
             Token::StringLiteral(string) => {
                 self.advance()?;
@@ -593,6 +618,43 @@ mod tests {
     }
 
     #[test]
+    fn test_function_returning_string() {
+        let program = "
+        func foo() > string {
+            return \"hello world\";
+        }";
+        let lexer = Lexer::new(program);
+        let mut parser = super::Parser::new(lexer);
+        let ast = parser.parse_program();
+        if ast.is_err() {
+            panic!("{:?}", ast);
+        }
+        let ast = ast.unwrap();
+
+        match ast {
+            ASTNode::Program(functions) => {
+                assert_eq!(functions.len(), 1);
+                let function = functions.first().unwrap();
+                match function {
+                    ASTNode::FunctionDeclaration {
+                        identifier,
+                        arguments,
+                        return_type,
+                        body,
+                    } => {
+                        assert_eq!(identifier, "foo");
+                        assert_eq!(*return_type, VariableType::String);
+                        assert_eq!(arguments.len(), 0);
+                        assert_eq!(body.len(), 1);
+                    }
+                    _ => panic!("Expected function declaration"),
+                }
+            }
+            _ => panic!("Expected program"),
+        }
+    }
+
+    #[test]
     fn test_function_with_return_value() {
         let program = "
             func foo(integer x) > integer {
@@ -615,7 +677,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");
@@ -659,7 +721,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");
@@ -710,7 +772,7 @@ mod tests {
                     ASTNode::FunctionDeclaration {
                         identifier,
                         arguments,
-                        return_type,
+                        return_type: _,
                         body,
                     } => {
                         assert_eq!(identifier, "foo");
@@ -724,6 +786,48 @@ mod tests {
                                     **expression,
                                     ASTNode::StringLiteral("hello".to_string())
                                 );
+                            }
+                            _ => panic!("Expected let declaration"),
+                        }
+                    }
+                    _ => panic!("Expected function declaration"),
+                }
+            }
+            _ => panic!("Expected program"),
+        }
+    }
+
+    #[test]
+    fn test_boolean_literal_value() {
+        let program = "
+            func foo() {
+                let x = true;
+            }";
+        let lexer = Lexer::new(program);
+        let mut parser = super::Parser::new(lexer);
+        let ast = parser.parse_program();
+        if ast.is_err() {
+            panic!("{:?}", ast);
+        }
+        let ast = ast.unwrap();
+        match ast {
+            ASTNode::Program(functions) => {
+                assert_eq!(functions.len(), 1);
+                let function = functions.first().unwrap();
+                match function {
+                    ASTNode::FunctionDeclaration {
+                        identifier,
+                        arguments,
+                        return_type: _,
+                        body,
+                    } => {
+                        assert_eq!(identifier, "foo");
+                        assert_eq!(arguments.len(), 0);
+                        assert_eq!(body.len(), 1);
+                        match body.get(0).unwrap() {
+                            ASTNode::LetDeclaration(identifier, expression) => {
+                                assert_eq!(identifier, "x");
+                                assert_eq!(**expression, ASTNode::BooleanLiteral(true));
                             }
                             _ => panic!("Expected let declaration"),
                         }

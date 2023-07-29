@@ -1,0 +1,7 @@
+func main() {
+    let floating_point = 3;
+    print("{integer}", floating_point);
+
+    let floating_point = 4;
+    print("{integer}", floating_point);
+}

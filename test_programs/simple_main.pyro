@@ -1,0 +1,9 @@
+func other(integer x) > integer {
+    return x;
+}
+
+func main() {
+    let test_string = "Test!";
+    print("This is a {string} string", test_string);
+    print("This is a {string} string with a number: {integer}", test_string, other(321));
+}
