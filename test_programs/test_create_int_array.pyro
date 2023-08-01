@@ -1,0 +1,9 @@
+func main() > integer {
+    let arr = create integer[2];
+
+    arr[0] = 4;
+    arr[1] = 5;
+
+    print("{integer}[1], {integer}[0]", arr[1], arr[0]);
+    return 0;
+}

@@ -49,6 +49,13 @@ pub enum ASTNode {
     },
     FunctionCall(String, Vec<ASTNode>),
 
+    MemoryAllocation {
+        variable_type: VariableType,
+        size: Box<ASTNode>,
+    },
+
+    ArrayAccess(String, Box<ASTNode>),
+    ArrayAssignment(String, Box<ASTNode>, Box<ASTNode>),
     LetDeclaration(String, Box<ASTNode>),
     ReturnStatement(Box<ASTNode>),
 
@@ -326,10 +333,30 @@ impl<'a> Parser<'a> {
 
         self.expect(Token::Let)?;
         identifier = self.expect_identifier()?;
-        self.expect(Token::Assignment)?;
+        self.expect(Token::EqualSign)?;
         expression = self.parse_expression()?;
 
         Ok(ASTNode::LetDeclaration(identifier, Box::new(expression)))
+    }
+
+    fn parse_array_access(&mut self) -> Result<ASTNode, String> {
+        let identifier = self.expect_identifier()?;
+        self.expect(Token::OpenBracket)?;
+        let index = self.parse_expression()?;
+        self.expect(Token::CloseBracket)?;
+
+        if self.peek_current() == Token::EqualSign {
+            self.expect(Token::EqualSign)?;
+            let value = self.parse_expression()?;
+
+            return Ok(ASTNode::ArrayAssignment(
+                identifier,
+                Box::new(index),
+                Box::new(value),
+            ));
+        }
+
+        Ok(ASTNode::ArrayAccess(identifier, Box::new(index)))
     }
 
     /// Parse a full call to a function, with function name and arguments.
@@ -366,6 +393,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_memory_allocation(&mut self) -> Result<ASTNode, String> {
+        let variable_type = self.expect_variable_type()?;
+        self.expect(Token::OpenBracket)?;
+        let size = self.parse_expression()?;
+        self.expect(Token::CloseBracket)?;
+
+        Ok(ASTNode::MemoryAllocation {
+            variable_type,
+            size: Box::new(size),
+        })
+    }
+
     /// Parse an expression from the input tokens.
     /// Currently only supports integer literals identifiers, and function calls
     /// as expressions.
@@ -380,14 +419,6 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 left = ASTNode::FloatLiteral(literal);
             }
-            Token::Identifier(literal) => {
-                if self.peek_ahead() == Token::OpenParen {
-                    left = self.parse_function_call()?;
-                } else {
-                    self.advance()?;
-                    left = ASTNode::Identifier(literal);
-                }
-            }
             Token::BooleanLiteral(literal) => {
                 self.advance()?;
                 left = ASTNode::BooleanLiteral(literal);
@@ -395,6 +426,20 @@ impl<'a> Parser<'a> {
             Token::StringLiteral(string) => {
                 self.advance()?;
                 left = ASTNode::StringLiteral(string);
+            }
+            Token::Create => {
+                self.advance()?;
+                left = self.parse_memory_allocation()?;
+            }
+            Token::Identifier(literal) => {
+                if self.peek_ahead() == Token::OpenParen {
+                    left = self.parse_function_call()?;
+                } else if self.peek_ahead() == Token::OpenBracket {
+                    left = self.parse_array_access()?;
+                } else {
+                    self.advance()?;
+                    left = ASTNode::Identifier(literal);
+                }
             }
             other => return Err(format!("Expected expression but got {:?}", other)),
         }

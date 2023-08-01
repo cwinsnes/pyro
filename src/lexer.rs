@@ -32,6 +32,7 @@ pub enum Token {
     Float,
     String,
     Return,
+    Create,
 
     // Identifiers and literals
     Identifier(String),
@@ -44,7 +45,7 @@ pub enum Token {
     Plus,
     Minus,
     Asterisk,
-    Assignment,
+    EqualSign,
     Slash,
 
     // Delimiters
@@ -53,6 +54,8 @@ pub enum Token {
     CloseParen,
     OpenBrace,
     CloseBrace,
+    OpenBracket,
+    CloseBracket,
     Comma,
     GreaterThan,
 
@@ -71,6 +74,7 @@ lazy_static! {
         map.insert("return", Token::Return);
         map.insert("string", Token::String);
         map.insert("boolean", Token::Boolean);
+        map.insert("create", Token::Create);
         map.insert("true", Token::BooleanLiteral(true));
         map.insert("false", Token::BooleanLiteral(false));
         map
@@ -245,11 +249,19 @@ impl<'a> Lexer<'a> {
                 }
                 '=' => {
                     self.input.next();
-                    return_token = Token::Assignment;
+                    return_token = Token::EqualSign;
                 }
                 '(' => {
                     self.input.next();
                     return_token = Token::OpenParen;
+                }
+                '[' => {
+                    self.input.next();
+                    return_token = Token::OpenBracket;
+                }
+                ']' => {
+                    self.input.next();
+                    return_token = Token::CloseBracket;
                 }
                 ')' => {
                     self.input.next();
@@ -417,7 +429,7 @@ mod tests {
     fn test_assignment_token() {
         let mut lexer = lexer_from_str("=");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Assignment);
+        assert_eq!(token, Token::EqualSign);
     }
 
     #[test]
@@ -432,6 +444,20 @@ mod tests {
         let mut lexer = lexer_from_str(")");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::CloseParen);
+    }
+
+    #[test]
+    fn test_open_bracket_token() {
+        let mut lexer = lexer_from_str("[");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::OpenBracket);
+    }
+
+    #[test]
+    fn test_close_bracket_token() {
+        let mut lexer = lexer_from_str("]");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::CloseBracket);
     }
 
     #[test]
@@ -503,7 +529,7 @@ mod tests {
             vec![
                 Token::Let,
                 Token::Identifier("foo".to_string()),
-                Token::Assignment,
+                Token::EqualSign,
                 Token::IntegerLiteral(42),
                 Token::SemiColon,
                 Token::Eof

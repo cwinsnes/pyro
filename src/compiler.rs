@@ -123,13 +123,15 @@ impl<'ctx> Compiler<'ctx> {
                             ])
                             .output()
                             .expect("Error compiling");
+                    } else {
+                        return Err("Error creating temporary file".to_string());
                     }
                     return Ok(None);
                 } else {
                     return Ok(Some(self.module.print_to_string()));
                 }
             }
-            _ => unimplemented!(),
+            _ => return Err("Not a program AST".to_string()),
         }
     }
 }

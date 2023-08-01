@@ -7,8 +7,10 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use std::collections::HashMap;
 
-use crate::common_utils::{generate_constant_name, into_basic_value_enum};
-use inkwell::types::{BasicType, BasicTypeEnum};
+use crate::common_utils::{
+    generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
+};
+use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue,
 };
@@ -74,6 +76,29 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 }
                 let variable_ptr = *variable_ptr.unwrap();
                 let variable = self.builder.build_load(variable_ptr, &variable_name);
+                Ok(variable.as_any_value_enum())
+            }
+            ASTNode::ArrayAccess(variable_name, index) => {
+                let ptr = self.local_variables.get(&variable_name);
+                if ptr.is_none() {
+                    return Err(format!("{} is not an accessible variable", variable_name));
+                }
+                let ptr = *ptr.unwrap();
+                let ptr = self
+                    .builder
+                    .build_load(ptr, &variable_name)
+                    .into_pointer_value();
+                let index = recursive_statement_compile!(self, *index.clone())?;
+
+                let load_ptr;
+                unsafe {
+                    load_ptr = self.builder.build_gep(
+                        ptr,
+                        &[index.into_int_value()],
+                        format!("{}_gep_load", variable_name).as_str(),
+                    );
+                }
+                let variable = self.builder.build_load(load_ptr, &variable_name);
                 Ok(variable.as_any_value_enum())
             }
             _ => Err(format!("Not an identifier statement")),
@@ -156,6 +181,55 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 self.builder.build_store(variable, value);
                 Ok(variable.as_any_value_enum())
             }
+            ASTNode::ArrayAssignment(variable_name, index, expression) => {
+                let ptr = self.local_variables.get(variable_name);
+                if ptr.is_none() {
+                    return Err(format!("{} is not an accessible variable", variable_name));
+                }
+                let ptr = *ptr.unwrap();
+                let ptr = self
+                    .builder
+                    .build_load(ptr, variable_name)
+                    .into_pointer_value();
+
+                let index = recursive_statement_compile!(self, *index.clone())?;
+                let value = recursive_statement_compile!(self, *expression.clone())?;
+
+                let assign_ptr;
+                let instruction;
+
+                unsafe {
+                    assign_ptr = self.builder.build_in_bounds_gep(
+                        ptr,
+                        &[index.into_int_value()],
+                        format!("{}_gep_assign", variable_name).as_str(),
+                    );
+
+                    match value.get_type() {
+                        AnyTypeEnum::ArrayType(_) => todo!(),
+                        AnyTypeEnum::FloatType(_) => {
+                            instruction = self
+                                .builder
+                                .build_store(assign_ptr, value.into_float_value());
+                        }
+                        AnyTypeEnum::FunctionType(_) => todo!(),
+                        AnyTypeEnum::IntType(_) => {
+                            instruction =
+                                self.builder.build_store(assign_ptr, value.into_int_value());
+                        }
+                        AnyTypeEnum::PointerType(_) => {
+                            instruction = self
+                                .builder
+                                .build_store(assign_ptr, value.into_pointer_value());
+                        }
+                        AnyTypeEnum::StructType(_) => todo!(),
+                        AnyTypeEnum::VectorType(_) => todo!(),
+                        AnyTypeEnum::VoidType(_) => todo!(),
+                    }
+                }
+
+                Ok(instruction.as_any_value_enum())
+            }
             _ => Err(format!("Not a valid Let statement")),
         }
     }
@@ -226,6 +300,63 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
 
             _ => Err(format!("Not a valid binary operation")),
         }
+    }
+
+    fn build_memory_allocation(self) -> Result<AnyValueEnum<'ctx>, String> {
+        if let ASTNode::MemoryAllocation {
+            variable_type,
+            size,
+        } = self.statement
+        {
+            let variable_type = get_type_from_variable_type(self.context, &variable_type);
+            if variable_type.is_none() {
+                return Err(format!("Cannot allocate array of void type"));
+            }
+            let variable_type = variable_type.unwrap();
+
+            let size = recursive_statement_compile!(self, *size.clone())?;
+
+            if !size.is_int_value() {
+                return Err(format!("Size is not an integer"));
+            }
+            let size = size.into_int_value();
+
+            let ptr;
+            match variable_type {
+                BasicTypeEnum::ArrayType(_) => todo!(),
+                BasicTypeEnum::FloatType(_) => {
+                    ptr = self.builder.build_array_malloc(
+                        variable_type.into_float_type(),
+                        size,
+                        "array_malloc",
+                    );
+                }
+                BasicTypeEnum::IntType(_) => {
+                    ptr = self.builder.build_array_malloc(
+                        variable_type.into_int_type(),
+                        size,
+                        "array_malloc",
+                    );
+                }
+                BasicTypeEnum::PointerType(_) => {
+                    ptr = self.builder.build_array_malloc(
+                        variable_type.into_pointer_type(),
+                        size,
+                        "array_malloc",
+                    );
+                }
+                BasicTypeEnum::StructType(_) => todo!(),
+                BasicTypeEnum::VectorType(_) => todo!(),
+            }
+
+            if ptr.is_err() {
+                return Err(format!("Could not allocate memory"));
+            }
+
+            return Ok(ptr.unwrap().as_any_value_enum());
+        }
+
+        Err(format!("Not a memory allocation"))
     }
 
     /// Build a binary operation out of the given operands.
@@ -301,6 +432,10 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn compile(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::Program(_) => Err(format!("Cannot declare program as statement")),
+            ASTNode::MemoryAllocation {
+                variable_type: _,
+                size: _,
+            } => self.build_memory_allocation(),
             ASTNode::FunctionDeclaration {
                 identifier: _,
                 arguments: _,
@@ -308,9 +443,11 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 body: _,
             } => Err(format!("Cannot declare function as statement")),
             ASTNode::FunctionCall(_, _) => self.build_function_call(),
-            ASTNode::LetDeclaration(_, _) => self.build_assignment(),
+            ASTNode::LetDeclaration(_, _) | ASTNode::ArrayAssignment(_, _, _) => {
+                self.build_assignment()
+            }
             ASTNode::ReturnStatement(_) => self.build_return(),
-            ASTNode::Identifier(_) => self.load_identifier(),
+            ASTNode::Identifier(_) | ASTNode::ArrayAccess(_, _) => self.load_identifier(),
             ASTNode::IntegerLiteral(_)
             | ASTNode::StringLiteral(_)
             | ASTNode::FloatLiteral(_)
