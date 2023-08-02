@@ -54,6 +54,8 @@ pub enum ASTNode {
         size: Box<ASTNode>,
     },
 
+    DeleteVariable(String),
+
     ArrayAccess(String, Box<ASTNode>),
     ArrayAssignment(String, Box<ASTNode>, Box<ASTNode>),
     LetDeclaration(String, Box<ASTNode>),
@@ -405,6 +407,11 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_delete_variable(&mut self) -> Result<ASTNode, String> {
+        let variable_name = self.expect_identifier()?;
+        Ok(ASTNode::DeleteVariable(variable_name))
+    }
+
     /// Parse an expression from the input tokens.
     /// Currently only supports integer literals identifiers, and function calls
     /// as expressions.
@@ -430,6 +437,10 @@ impl<'a> Parser<'a> {
             Token::Create => {
                 self.advance()?;
                 left = self.parse_memory_allocation()?;
+            }
+            Token::Delete => {
+                self.advance()?;
+                left = self.parse_delete_variable()?;
             }
             Token::Identifier(literal) => {
                 if self.peek_ahead() == Token::OpenParen {

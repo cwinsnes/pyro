@@ -32,6 +32,7 @@ pub enum Token {
     Float,
     String,
     Return,
+    Delete,
     Create,
 
     // Identifiers and literals
@@ -74,6 +75,7 @@ lazy_static! {
         map.insert("return", Token::Return);
         map.insert("string", Token::String);
         map.insert("boolean", Token::Boolean);
+        map.insert("delete", Token::Delete);
         map.insert("create", Token::Create);
         map.insert("true", Token::BooleanLiteral(true));
         map.insert("false", Token::BooleanLiteral(false));

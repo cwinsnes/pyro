@@ -359,6 +359,31 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         Err(format!("Not a memory allocation"))
     }
 
+    fn build_memory_deallocation(self) -> Result<AnyValueEnum<'ctx>, String> {
+        if let ASTNode::DeleteVariable(variable_name) = self.statement {
+            let variable_ptr = self.local_variables.get(&variable_name);
+
+            if variable_ptr.is_none() {
+                return Err(format!("Variable `{}` not found", variable_name));
+            }
+            let variable_ptr = *variable_ptr.unwrap();
+            let variable_ptr = self.builder.build_load(variable_ptr, "load");
+
+            if !variable_ptr.is_pointer_value() {
+                return Err(format!(
+                    "Variable `{}` is not a deleteable variable",
+                    variable_name
+                ));
+            }
+            let variable_ptr = variable_ptr.into_pointer_value();
+            let free_instruction = self.builder.build_free(variable_ptr);
+
+            return Ok(free_instruction.as_any_value_enum());
+        }
+
+        Err(format!("Not a valid delete"))
+    }
+
     /// Build a binary operation out of the given operands.
     ///
     /// The `left` operand will determine the type of the operation.
@@ -447,6 +472,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 self.build_assignment()
             }
             ASTNode::ReturnStatement(_) => self.build_return(),
+            ASTNode::DeleteVariable(_) => self.build_memory_deallocation(),
             ASTNode::Identifier(_) | ASTNode::ArrayAccess(_, _) => self.load_identifier(),
             ASTNode::IntegerLiteral(_)
             | ASTNode::StringLiteral(_)
