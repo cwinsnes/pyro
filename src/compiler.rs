@@ -15,11 +15,10 @@ use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::ast::ASTNode;
-
 use crate::function::PyroFunction;
 
 /// Compiler for the Pyro programming language.
-pub struct Compiler<'ctx> {
+pub(crate) struct Compiler<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -30,8 +29,9 @@ pub struct Compiler<'ctx> {
 impl<'ctx> Compiler<'ctx> {
     /// Create a new compiler using the provided Inkwell LLVM context.
     ///
-    /// The LLVM module used throughout compilation will use the name `module_name`.
-    pub fn new(module_name: String, context: &'ctx Context) -> Self {
+    /// The LLVM module used throughout compilation will use the name
+    /// `module_name`.
+    pub(crate) fn new(module_name: String, context: &'ctx Context) -> Self {
         Self {
             context,
             module: context.create_module(&module_name),
@@ -39,6 +39,26 @@ impl<'ctx> Compiler<'ctx> {
 
             string_constants: HashMap::new(),
         }
+    }
+
+    pub(crate) fn context(&self) -> &'ctx Context {
+        self.context
+    }
+
+    pub(crate) fn module(&self) -> &Module<'ctx> {
+        &self.module
+    }
+
+    pub(crate) fn builder(&self) -> &Builder<'ctx> {
+        &self.builder
+    }
+
+    pub(crate) fn string_constants(&self) -> &HashMap<String, PointerValue<'ctx>> {
+        &self.string_constants
+    }
+
+    pub(crate) fn mut_string_constants(&mut self) -> &mut HashMap<String, PointerValue<'ctx>> {
+        &mut self.string_constants
     }
 
     fn get_default_target_machine(&self) -> Result<TargetMachine, String> {
@@ -74,7 +94,7 @@ impl<'ctx> Compiler<'ctx> {
             .add_function("print", print_type, Some(Linkage::External));
     }
 
-    pub fn compile(
+    pub(crate) fn compile(
         mut self,
         ast: ASTNode,
         output_path: Option<&Path>,
@@ -86,15 +106,25 @@ impl<'ctx> Compiler<'ctx> {
         self.add_print();
 
         match ast {
-            ASTNode::Program(functions) => {
-                for function_declaration in functions {
-                    PyroFunction::compile_function(
-                        self.context,
-                        &self.module,
-                        &self.builder,
-                        &mut self.string_constants,
-                        function_declaration,
-                    )?;
+            ASTNode::Program(program_contents) => {
+                for content in program_contents {
+                    match content {
+                        ASTNode::FunctionDeclaration {
+                            identifier: _,
+                            arguments: _,
+                            return_type: _,
+                            body: _,
+                        } => {
+                            PyroFunction::compile_function(
+                                self.context,
+                                &self.module,
+                                &self.builder,
+                                &mut self.string_constants,
+                                content,
+                            )?;
+                        }
+                        _ => todo!(),
+                    }
                 }
 
                 // TODO: Everything below this should be moved around
@@ -112,7 +142,8 @@ impl<'ctx> Compiler<'ctx> {
                             .expect("Error creating temporary file");
                         let output_path = output_path.unwrap().to_str().unwrap();
 
-                        // TODO: Make this actually look for library instead of hard coded debug path
+                        // TODO: Make this actually look for library instead of hard coded debug
+                        // path
                         Command::new("clang")
                             .args([
                                 "-no-pie",

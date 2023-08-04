@@ -1,8 +1,7 @@
 #![feature(c_variadic)]
 
 use core::fmt;
-use std::ffi::{c_char, c_double, c_int};
-use std::ffi::{CStr, VaList};
+use std::ffi::{c_char, c_double, c_int, CStr, VaList};
 
 enum PlaceHolder {
     Int(c_int),
@@ -81,8 +80,9 @@ unsafe extern "C" fn print(str: *const c_char, mut vars: ...) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
+
+    use super::*;
 
     #[test]
     fn testprint() {

@@ -1,18 +1,19 @@
 extern crate inkwell;
 
-use crate::ast::{ASTNode, Operator};
-use ::inkwell::basic_block::BasicBlock;
+use std::collections::HashMap;
+
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use std::collections::HashMap;
-
-use crate::common_utils::{
-    generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
-};
 use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{
     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue,
+};
+
+use crate::ast::{ASTNode, Operator};
+use crate::common_utils::{
+    generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
 };
 
 macro_rules! recursive_statement_compile {
@@ -21,9 +22,9 @@ macro_rules! recursive_statement_compile {
             $curr_stmt.context,
             $curr_stmt.module,
             $curr_stmt.builder,
+            $curr_stmt.string_globals,
             $curr_stmt.entry_block,
             $curr_stmt.local_variables,
-            $curr_stmt.string_globals,
             $eval_stmt,
         )
     };
@@ -33,9 +34,10 @@ pub(crate) struct PyroStatement<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
+    string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+
     entry_block: Option<BasicBlock<'ctx>>,
     local_variables: &'a mut HashMap<String, PointerValue<'ctx>>,
-    string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
     statement: ASTNode,
 }
 
@@ -44,20 +46,20 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         context: &'ctx Context,
         module: &'a Module<'ctx>,
         builder: &'a Builder<'ctx>,
+        string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
 
         entry_block: Option<BasicBlock<'ctx>>,
         local_variables: &'a mut HashMap<String, PointerValue<'ctx>>,
-        string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
         statement: ASTNode,
     ) -> Result<AnyValueEnum<'ctx>, String> {
         let statement = PyroStatement {
             context,
             module,
             builder,
+            string_globals,
 
             entry_block,
             local_variables,
-            string_globals,
             statement,
         };
 
@@ -360,7 +362,7 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     }
 
     fn build_memory_deallocation(self) -> Result<AnyValueEnum<'ctx>, String> {
-        if let ASTNode::DeleteVariable(variable_name) = self.statement {
+        if let ASTNode::DestroyVariable(variable_name) = self.statement {
             let variable_ptr = self.local_variables.get(&variable_name);
 
             if variable_ptr.is_none() {
@@ -371,12 +373,13 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
 
             if !variable_ptr.is_pointer_value() {
                 return Err(format!(
-                    "Variable `{}` is not a deleteable variable",
+                    "Variable `{}` is not a destroyable variable",
                     variable_name
                 ));
             }
             let variable_ptr = variable_ptr.into_pointer_value();
             let free_instruction = self.builder.build_free(variable_ptr);
+            self.local_variables.remove(&variable_name);
 
             return Ok(free_instruction.as_any_value_enum());
         }
@@ -389,7 +392,8 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     /// The `left` operand will determine the type of the operation.
     /// The `right` operand needs to be of the same type for operation to work.
     ///
-    /// Returns the resulting LLVM MathValue or an error if the types did not match.
+    /// Returns the resulting LLVM MathValue or an error if the types did not
+    /// match.
     fn binary_op_construction(
         &self,
         left: BasicValueEnum<'ctx>,
@@ -467,12 +471,17 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 return_type: _,
                 body: _,
             } => Err(format!("Cannot declare function as statement")),
+            ASTNode::ClassDeclaration {
+                identifier: _,
+                methods: _,
+                fields: _,
+            } => Err(format!("Cannot declare class as statement")),
             ASTNode::FunctionCall(_, _) => self.build_function_call(),
             ASTNode::LetDeclaration(_, _) | ASTNode::ArrayAssignment(_, _, _) => {
                 self.build_assignment()
             }
             ASTNode::ReturnStatement(_) => self.build_return(),
-            ASTNode::DeleteVariable(_) => self.build_memory_deallocation(),
+            ASTNode::DestroyVariable(_) => self.build_memory_deallocation(),
             ASTNode::Identifier(_) | ASTNode::ArrayAccess(_, _) => self.load_identifier(),
             ASTNode::IntegerLiteral(_)
             | ASTNode::StringLiteral(_)

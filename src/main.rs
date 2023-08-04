@@ -1,4 +1,5 @@
 mod ast;
+mod class;
 mod common_utils;
 mod compiler;
 mod function;

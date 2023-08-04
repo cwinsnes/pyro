@@ -1,9 +1,6 @@
 extern crate inkwell;
 use std::collections::HashMap;
 
-use crate::ast::{ASTNode, Argument, VariableType};
-use crate::common_utils::get_type_from_variable_type;
-use crate::statement::PyroStatement;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -11,14 +8,18 @@ use inkwell::module::Module;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType};
 use inkwell::values::{FunctionValue, PointerValue};
 
-pub struct PyroFunction<'a, 'ctx> {
+use crate::ast::{ASTNode, Variable, VariableType};
+use crate::common_utils::get_type_from_variable_type;
+use crate::statement::PyroStatement;
+
+pub(crate) struct PyroFunction<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
     string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
 
     identifier: String,
-    arguments: Vec<Argument>,
+    arguments: Vec<Variable>,
     body: Vec<ASTNode>,
     return_type: VariableType,
     variables: HashMap<String, PointerValue<'ctx>>,
@@ -26,11 +27,12 @@ pub struct PyroFunction<'a, 'ctx> {
 }
 
 impl<'a, 'ctx> PyroFunction<'a, 'ctx> {
-    pub fn compile_function(
+    pub(crate) fn compile_function(
         context: &'ctx Context,
         module: &'a Module<'ctx>,
         builder: &'a Builder<'ctx>,
         string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+
         function_declaration: ASTNode,
     ) -> Result<FunctionValue<'ctx>, String> {
         if let ASTNode::FunctionDeclaration {
@@ -107,9 +109,9 @@ impl<'a, 'ctx> PyroFunction<'a, 'ctx> {
                 self.context,
                 self.module,
                 self.builder,
+                self.string_globals,
                 self.entry_block(),
                 &mut self.variables,
-                self.string_globals,
                 statement,
             )?;
         }
@@ -143,7 +145,7 @@ impl<'a, 'ctx> PyroFunction<'a, 'ctx> {
             .arguments
             .iter()
             .map(|a| {
-                get_type_from_variable_type(self.context, &a.argument_type)
+                get_type_from_variable_type(self.context, &a.variable_type)
                     .expect("Invalid Argument type")
                     .into()
             })
