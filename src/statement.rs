@@ -7,14 +7,10 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{
-    AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue,
-};
+use inkwell::values::{AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 
-use crate::ast::{ASTNode, Operator};
-use crate::common_utils::{
-    generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
-};
+use crate::ast::{ASTNode, Operator, VariableType};
+use crate::common_utils::{generate_constant_name, get_type_from_variable_type, into_basic_value_enum};
 
 macro_rules! recursive_statement_compile {
     ($curr_stmt: expr, $eval_stmt: expr) => {
@@ -183,6 +179,19 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 self.builder.build_store(variable, value);
                 Ok(variable.as_any_value_enum())
             }
+            ASTNode::VariableAssignment(variable_name, expression) => {
+                let value = recursive_statement_compile!(self, *expression.clone())?;
+                let value = into_basic_value_enum(value)?;
+
+                let variable = self.local_variables.get(variable_name);
+                if variable.is_none() {
+                    return Err(format!("No variable named {}", variable_name));
+                }
+                let variable = *variable.unwrap();
+                self.builder.build_store(variable, value);
+
+                Ok(variable.as_any_value_enum())
+            }
             ASTNode::ArrayAssignment(variable_name, index, expression) => {
                 let ptr = self.local_variables.get(variable_name);
                 if ptr.is_none() {
@@ -304,8 +313,8 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         }
     }
 
-    fn build_memory_allocation(self) -> Result<AnyValueEnum<'ctx>, String> {
-        if let ASTNode::MemoryAllocation {
+    fn build_array_allocation(self) -> Result<AnyValueEnum<'ctx>, String> {
+        if let ASTNode::ArrayAllocation {
             variable_type,
             size,
         } = self.statement
@@ -359,6 +368,28 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
         }
 
         Err(format!("Not a memory allocation"))
+    }
+
+    fn build_object_allocation(self) -> Result<AnyValueEnum<'ctx>, String> {
+        if let ASTNode::ObjectAllocation(VariableType::Class(class_name)) = self.statement {
+            let struct_type = self.context.get_struct_type(&class_name);
+
+            if struct_type.is_none() {
+                return Err(format!("Cannot find class of type `{}`", class_name));
+            }
+            let struct_type = struct_type.unwrap();
+
+            let ptr = self
+                .builder
+                .build_malloc(struct_type, format!("{}_malloc", class_name).as_str());
+
+            if ptr.is_err() {
+                return Err(format!("Could not allocate memory"));
+            }
+            return Ok(ptr.unwrap().as_any_value_enum());
+        }
+
+        Err(format!("Not a valid object allocation"))
     }
 
     fn build_memory_deallocation(self) -> Result<AnyValueEnum<'ctx>, String> {
@@ -461,10 +492,10 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
     fn compile(self) -> Result<AnyValueEnum<'ctx>, String> {
         match &self.statement {
             ASTNode::Program(_) => Err(format!("Cannot declare program as statement")),
-            ASTNode::MemoryAllocation {
+            ASTNode::ArrayAllocation {
                 variable_type: _,
                 size: _,
-            } => self.build_memory_allocation(),
+            } => self.build_array_allocation(),
             ASTNode::FunctionDeclaration {
                 identifier: _,
                 arguments: _,
@@ -476,10 +507,11 @@ impl<'a, 'ctx> PyroStatement<'a, 'ctx> {
                 methods: _,
                 fields: _,
             } => Err(format!("Cannot declare class as statement")),
+            ASTNode::ObjectAllocation(_) => self.build_object_allocation(),
             ASTNode::FunctionCall(_, _) => self.build_function_call(),
-            ASTNode::LetDeclaration(_, _) | ASTNode::ArrayAssignment(_, _, _) => {
-                self.build_assignment()
-            }
+            ASTNode::LetDeclaration(_, _)
+            | ASTNode::ArrayAssignment(_, _, _)
+            | ASTNode::VariableAssignment(_, _) => self.build_assignment(),
             ASTNode::ReturnStatement(_) => self.build_return(),
             ASTNode::DestroyVariable(_) => self.build_memory_deallocation(),
             ASTNode::Identifier(_) | ASTNode::ArrayAccess(_, _) => self.load_identifier(),

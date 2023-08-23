@@ -7,6 +7,7 @@ pub(crate) enum VariableType {
     Boolean,
     Float,
     String,
+    Class(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,15 +55,18 @@ pub(crate) enum ASTNode {
         methods: Vec<ASTNode>,
     },
 
-    MemoryAllocation {
+    ArrayAllocation {
         variable_type: VariableType,
         size: Box<ASTNode>,
     },
+
+    ObjectAllocation(VariableType),
 
     DestroyVariable(String),
 
     ArrayAccess(String, Box<ASTNode>),
     ArrayAssignment(String, Box<ASTNode>, Box<ASTNode>),
+    VariableAssignment(String, Box<ASTNode>),
     LetDeclaration(String, Box<ASTNode>),
     ReturnStatement(Box<ASTNode>),
 
@@ -187,6 +191,10 @@ impl<'a> Parser<'a> {
             Token::String => {
                 self.advance()?;
                 Ok(VariableType::String)
+            }
+            Token::Identifier(identifier) => {
+                self.advance()?;
+                Ok(VariableType::Class(identifier))
             }
             token => Err(format!(
                 "Expected variable type token but received token {:?}",
@@ -413,6 +421,13 @@ impl<'a> Parser<'a> {
         Ok(ASTNode::ArrayAccess(identifier, Box::new(index)))
     }
 
+    fn parse_variable_assignment(&mut self) -> Result<ASTNode, String> {
+        let identifier = self.expect_identifier()?;
+        self.expect(Token::EqualSign)?;
+        let value = self.parse_expression()?;
+        Ok(ASTNode::VariableAssignment(identifier, Box::new(value)))
+    }
+
     /// Parse a full call to a function, with function name and arguments.
     fn parse_function_call(&mut self) -> Result<ASTNode, String> {
         // TODO: This is VERY similar to parse_argument_list
@@ -447,16 +462,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_memory_allocation(&mut self) -> Result<ASTNode, String> {
+    fn parse_create_statement(&mut self) -> Result<ASTNode, String> {
         let variable_type = self.expect_variable_type()?;
-        self.expect(Token::OpenBracket)?;
-        let size = self.parse_expression()?;
-        self.expect(Token::CloseBracket)?;
+        println!("{:?}", variable_type);
+        if self.peek_ahead() == Token::OpenBracket {
+            self.expect(Token::OpenBracket)?;
+            let size = self.parse_expression()?;
+            self.expect(Token::CloseBracket)?;
 
-        Ok(ASTNode::MemoryAllocation {
-            variable_type,
-            size: Box::new(size),
-        })
+            return Ok(ASTNode::ArrayAllocation {
+                variable_type,
+                size: Box::new(size),
+            });
+        }
+
+        Ok(ASTNode::ObjectAllocation(variable_type))
     }
 
     fn parse_destroy_variable(&mut self) -> Result<ASTNode, String> {
@@ -488,7 +508,7 @@ impl<'a> Parser<'a> {
             }
             Token::Create => {
                 self.advance()?;
-                left = self.parse_memory_allocation()?;
+                left = self.parse_create_statement()?;
             }
             Token::Destroy => {
                 self.advance()?;
@@ -499,6 +519,8 @@ impl<'a> Parser<'a> {
                     left = self.parse_function_call()?;
                 } else if self.peek_ahead() == Token::OpenBracket {
                     left = self.parse_array_access()?;
+                } else if self.peek_ahead() == Token::EqualSign {
+                    left = self.parse_variable_assignment()?;
                 } else {
                     self.advance()?;
                     left = ASTNode::Identifier(literal);

@@ -22,6 +22,15 @@ pub(crate) fn get_type_from_variable_type<'ctx>(
                 .ptr_type(AddressSpace::default())
                 .as_basic_type_enum(),
         ),
+        VariableType::Class(identifier) => {
+            let return_type = context.get_struct_type(&identifier.as_str());
+            if return_type.is_some() {
+                return Some(return_type.unwrap().as_basic_type_enum());
+            }
+            // TODO: Fix this so that an invalid identifier gives Err
+            // rather than same as Void type.
+            None
+        }
         VariableType::Void => None,
     }
 }

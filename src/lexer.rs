@@ -60,6 +60,7 @@ pub(crate) enum Token {
     OpenBracket,
     CloseBracket,
     Comma,
+    Dot,
     GreaterThan,
 
     Eof,
@@ -292,6 +293,10 @@ impl<'a> Lexer<'a> {
                     self.input.next();
                     return_token = Token::GreaterThan;
                 }
+                '.' => {
+                    self.input.next();
+                    return_token = Token::Dot;
+                }
                 _ => {
                     return Err(format!("Unexpected character: {}", c));
                 }
@@ -484,6 +489,13 @@ mod tests {
         let mut lexer = lexer_from_str(";");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::SemiColon);
+    }
+
+    #[test]
+    fn test_dot_token() {
+        let mut lexer = lexer_from_str(".");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Dot);
     }
 
     #[test]

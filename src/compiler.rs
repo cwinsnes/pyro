@@ -8,13 +8,12 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::support::LLVMString;
-use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
-};
+use inkwell::targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::ast::ASTNode;
+use crate::class::PyroClass;
 use crate::function::PyroFunction;
 
 /// Compiler for the Pyro programming language.
@@ -39,26 +38,6 @@ impl<'ctx> Compiler<'ctx> {
 
             string_constants: HashMap::new(),
         }
-    }
-
-    pub(crate) fn context(&self) -> &'ctx Context {
-        self.context
-    }
-
-    pub(crate) fn module(&self) -> &Module<'ctx> {
-        &self.module
-    }
-
-    pub(crate) fn builder(&self) -> &Builder<'ctx> {
-        &self.builder
-    }
-
-    pub(crate) fn string_constants(&self) -> &HashMap<String, PointerValue<'ctx>> {
-        &self.string_constants
-    }
-
-    pub(crate) fn mut_string_constants(&mut self) -> &mut HashMap<String, PointerValue<'ctx>> {
-        &mut self.string_constants
     }
 
     fn get_default_target_machine(&self) -> Result<TargetMachine, String> {
@@ -116,6 +95,20 @@ impl<'ctx> Compiler<'ctx> {
                             body: _,
                         } => {
                             PyroFunction::compile_function(
+                                self.context,
+                                &self.module,
+                                &self.builder,
+                                &mut self.string_constants,
+                                content,
+                            )?;
+                        }
+                        ASTNode::ClassDeclaration {
+                            identifier: _,
+                            fields: _,
+                            methods: _,
+                        } => {
+                            println!("Defining a class");
+                            PyroClass::define_class(
                                 self.context,
                                 &self.module,
                                 &self.builder,

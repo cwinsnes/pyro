@@ -1,6 +1,6 @@
 func main() > integer {
     let arr = create integer[2];
 
-    delete arr;
+    destroy arr;
     return 0;
 }

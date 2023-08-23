@@ -1,0 +1,9 @@
+class TestClass {
+    integer counter;
+}
+
+func main() > integer {
+    
+    let testing = create TestClass;
+    return 0;
+}
