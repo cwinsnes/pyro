@@ -78,7 +78,7 @@ lazy_static! {
         map.insert("return", Token::Return);
         map.insert("string", Token::String);
         map.insert("boolean", Token::Boolean);
-        map.insert("delete", Token::Destroy);
+        map.insert("destroy", Token::Destroy);
         map.insert("create", Token::Create);
         map.insert("true", Token::BooleanLiteral(true));
         map.insert("false", Token::BooleanLiteral(false));

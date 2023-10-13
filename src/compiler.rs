@@ -8,13 +8,14 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::support::LLVMString;
-use inkwell::targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine};
+use inkwell::targets::{
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
+};
 use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::ast::ASTNode;
-use crate::class::PyroClass;
-use crate::function::PyroFunction;
+use crate::{class, function};
 
 /// Compiler for the Pyro programming language.
 pub(crate) struct Compiler<'ctx> {
@@ -94,7 +95,7 @@ impl<'ctx> Compiler<'ctx> {
                             return_type: _,
                             body: _,
                         } => {
-                            PyroFunction::compile_function(
+                            function::compile_function(
                                 self.context,
                                 &self.module,
                                 &self.builder,
@@ -108,7 +109,7 @@ impl<'ctx> Compiler<'ctx> {
                             methods: _,
                         } => {
                             println!("Defining a class");
-                            PyroClass::define_class(
+                            class::define_class(
                                 self.context,
                                 &self.module,
                                 &self.builder,

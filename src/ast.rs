@@ -464,7 +464,6 @@ impl<'a> Parser<'a> {
 
     fn parse_create_statement(&mut self) -> Result<ASTNode, String> {
         let variable_type = self.expect_variable_type()?;
-        println!("{:?}", variable_type);
         if self.peek_ahead() == Token::OpenBracket {
             self.expect(Token::OpenBracket)?;
             let size = self.parse_expression()?;
@@ -475,7 +474,6 @@ impl<'a> Parser<'a> {
                 size: Box::new(size),
             });
         }
-
         Ok(ASTNode::ObjectAllocation(variable_type))
     }
 
