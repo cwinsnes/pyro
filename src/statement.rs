@@ -12,6 +12,7 @@ use inkwell::values::{
 };
 
 use crate::ast::{ASTNode, Operator, VariableType};
+use crate::class;
 use crate::common_utils::{
     generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
 };
@@ -23,6 +24,7 @@ macro_rules! recursive_statement_compile {
             $curr_stmt.module,
             $curr_stmt.builder,
             $curr_stmt.string_globals,
+            $curr_stmt.class_fields,
             $curr_stmt.entry_block,
             $curr_stmt.local_variables,
             $eval_stmt,
@@ -35,6 +37,7 @@ struct PyroStatement<'a, 'ctx> {
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
     string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+    class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     entry_block: Option<BasicBlock<'ctx>>,
     local_variables: &'a mut HashMap<String, PointerValue<'ctx>>,
@@ -46,6 +49,7 @@ pub(crate) fn compile_statement<'a, 'ctx>(
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
     string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+    class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     entry_block: Option<BasicBlock<'ctx>>,
     local_variables: &'a mut HashMap<String, PointerValue<'ctx>>,
@@ -56,6 +60,7 @@ pub(crate) fn compile_statement<'a, 'ctx>(
         module,
         builder,
         string_globals,
+        class_fields,
 
         entry_block,
         local_variables,
@@ -70,38 +75,24 @@ fn compile_statement_llvm<'a, 'ctx>(
 ) -> Result<AnyValueEnum<'ctx>, String> {
     match &pyro_statement.statement {
         ASTNode::Program(_) => Err(format!("Cannot declare program as statement")),
-        ASTNode::ArrayAllocation {
-            variable_type: _,
-            size: _,
-        } => build_array_allocation(pyro_statement),
-        ASTNode::FunctionDeclaration {
-            identifier: _,
-            arguments: _,
-            return_type: _,
-            body: _,
-        } => Err(format!("Cannot declare function as statement")),
-        ASTNode::ClassDeclaration {
-            identifier: _,
-            methods: _,
-            fields: _,
-        } => Err(format!("Cannot declare class as statement")),
-        ASTNode::ObjectAllocation(_) => build_object_allocation(pyro_statement),
-        ASTNode::FunctionCall(_, _) => build_function_call(pyro_statement),
-        ASTNode::LetDeclaration(_, _)
-        | ASTNode::ArrayAssignment(_, _, _)
-        | ASTNode::VariableAssignment(_, _) => build_assignment(pyro_statement),
-        ASTNode::ReturnStatement(_) => build_return(pyro_statement),
-        ASTNode::DestroyVariable(_) => build_memory_deallocation(pyro_statement),
-        ASTNode::Identifier(_) | ASTNode::ArrayAccess(_, _) => load_identifier(pyro_statement),
-        ASTNode::IntegerLiteral(_)
-        | ASTNode::StringLiteral(_)
-        | ASTNode::FloatLiteral(_)
-        | ASTNode::BooleanLiteral(_) => build_literal(pyro_statement),
-        ASTNode::BinaryOp {
-            left: _,
-            operator: _,
-            right: _,
-        } => build_binary_operation(pyro_statement),
+        ASTNode::ArrayAllocation { .. } => build_array_allocation(pyro_statement),
+        ASTNode::FunctionDeclaration { .. } => Err(format!("Cannot declare function as statement")),
+        ASTNode::ClassDeclaration { .. } => Err(format!("Cannot declare class as statement")),
+        ASTNode::ObjectAllocation(..) => build_object_allocation(pyro_statement),
+        ASTNode::ObjectFieldAccess { .. } => build_object_access(pyro_statement),
+        ASTNode::FunctionCall(..) => build_function_call(pyro_statement),
+        ASTNode::LetDeclaration(..)
+        | ASTNode::ArrayAssignment(..)
+        | ASTNode::VariableAssignment(..)
+        | ASTNode::ObjectFieldAssignment { .. } => build_assignment(pyro_statement),
+        ASTNode::ReturnStatement(..) => build_return(pyro_statement),
+        ASTNode::DestroyVariable(..) => build_memory_deallocation(pyro_statement),
+        ASTNode::Identifier(..) | ASTNode::ArrayAccess(..) => build_load_identifier(pyro_statement),
+        ASTNode::IntegerLiteral(..)
+        | ASTNode::StringLiteral(..)
+        | ASTNode::FloatLiteral(..)
+        | ASTNode::BooleanLiteral(..) => build_literal(pyro_statement),
+        ASTNode::BinaryOp { .. } => build_binary_operation(pyro_statement),
     }
 }
 
@@ -190,6 +181,77 @@ fn build_object_allocation<'a, 'ctx>(
     Err(format!("Not a valid object allocation"))
 }
 
+// TODO: this should definitely be rewritten to be more readable.
+fn build_object_access<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+) -> Result<AnyValueEnum<'ctx>, String> {
+    if let ASTNode::ObjectFieldAccess {
+        object_identifier,
+        field_identifier,
+    } = pyro_statement.statement.clone()
+    {
+        let ptr = pyro_statement
+            .local_variables
+            .get(object_identifier.as_str());
+        if ptr.is_none() {
+            return Err(format!(
+                "Cannot find object with name `{}`",
+                object_identifier
+            ));
+        }
+        let ptr = *ptr.unwrap();
+
+        let object_ptr = pyro_statement
+            .builder
+            .build_load(ptr, &object_identifier)
+            .into_pointer_value();
+
+        let object = pyro_statement
+            .builder
+            .build_load(object_ptr, &object_identifier)
+            .into_struct_value();
+
+        let class_name: String = object
+            .get_type()
+            .get_name()
+            .expect("Struct type is missing a name")
+            .to_str()
+            .unwrap()
+            .to_owned();
+
+        let current_class_fields = pyro_statement.class_fields.get(&class_name);
+        if current_class_fields.is_none() {
+            return Err(format!("Cannot find class of type `{}`", class_name));
+        }
+        let current_class_fields = current_class_fields.unwrap();
+
+        let field_index = current_class_fields.get(&field_identifier);
+        if field_index.is_none() {
+            return Err(format!(
+                "Cannot find field `{}` in class `{}`",
+                field_identifier, class_name
+            ));
+        }
+        let field_index = *field_index.unwrap();
+
+        let load_ptr = pyro_statement.builder.build_struct_gep(
+            object_ptr,
+            field_index,
+            format!("{}_field_load", field_identifier).as_str(),
+        );
+        if load_ptr.is_err() {
+            return Err(format!("Could not load field `{}`", field_identifier));
+        }
+        let load_ptr = load_ptr.unwrap();
+
+        let variable = pyro_statement
+            .builder
+            .build_load(load_ptr, &field_identifier);
+        return Ok(variable.as_any_value_enum());
+    }
+    Err(format!("Not a valid object access"))
+}
+
 fn build_function_call<'a, 'ctx>(
     pyro_statement: &mut PyroStatement<'a, 'ctx>,
 ) -> Result<AnyValueEnum<'ctx>, String> {
@@ -246,7 +308,7 @@ fn allocate_stack_variable<'a, 'ctx, T: BasicType<'ctx>>(
 
     Err(format!("Let statement without an entry block"))
 }
-
+// TODO: Split this into multiple functions!
 fn build_assignment<'a, 'ctx>(
     pyro_statement: &mut PyroStatement<'a, 'ctx>,
 ) -> Result<AnyValueEnum<'ctx>, String> {
@@ -264,6 +326,7 @@ fn build_assignment<'a, 'ctx>(
             pyro_statement.builder.build_store(variable, value);
             Ok(variable.as_any_value_enum())
         }
+
         ASTNode::VariableAssignment(variable_name, expression) => {
             let value = recursive_statement_compile!(pyro_statement, *expression.clone())?;
             let value = into_basic_value_enum(value)?;
@@ -277,6 +340,7 @@ fn build_assignment<'a, 'ctx>(
 
             Ok(variable.as_any_value_enum())
         }
+
         ASTNode::ArrayAssignment(variable_name, index, expression) => {
             let ptr = pyro_statement.local_variables.get(&variable_name);
             if ptr.is_none() {
@@ -327,6 +391,94 @@ fn build_assignment<'a, 'ctx>(
 
             Ok(instruction.as_any_value_enum())
         }
+
+        ASTNode::ObjectFieldAssignment {
+            object_identifier,
+            field_identifier,
+            value,
+        } => {
+            let ptr = pyro_statement
+                .local_variables
+                .get(object_identifier.as_str());
+            if ptr.is_none() {
+                return Err(format!(
+                    "Cannot find object with name `{}`",
+                    object_identifier
+                ));
+            }
+            let ptr = *ptr.unwrap();
+
+            let object_ptr = pyro_statement
+                .builder
+                .build_load(ptr, &object_identifier)
+                .into_pointer_value();
+
+            let object = pyro_statement
+                .builder
+                .build_load(object_ptr, &object_identifier)
+                .into_struct_value();
+
+            let class_name: String = object
+                .get_type()
+                .get_name()
+                .expect("Struct type is missing a name")
+                .to_str()
+                .unwrap()
+                .to_owned();
+
+            let current_class_fields = pyro_statement.class_fields.get(&class_name);
+            if current_class_fields.is_none() {
+                return Err(format!("Cannot find class of type `{}`", class_name));
+            }
+            let current_class_fields = current_class_fields.unwrap();
+
+            let field_index = current_class_fields.get(&field_identifier);
+            if field_index.is_none() {
+                return Err(format!(
+                    "Cannot find field `{}` in class `{}`",
+                    field_identifier, class_name
+                ));
+            }
+            let field_index = *field_index.unwrap();
+
+            let field_ptr = pyro_statement.builder.build_struct_gep(
+                object_ptr,
+                field_index,
+                format!("{}_field_load", field_identifier).as_str(),
+            );
+            if field_ptr.is_err() {
+                return Err(format!("Could not load field `{}`", field_identifier));
+            }
+            let field_ptr = field_ptr.unwrap();
+
+            let value = recursive_statement_compile!(pyro_statement, *value.clone())?;
+
+            let instruction;
+            match value.get_type() {
+                AnyTypeEnum::ArrayType(_) => todo!(),
+                AnyTypeEnum::FloatType(_) => {
+                    instruction = pyro_statement
+                        .builder
+                        .build_store(field_ptr, value.into_float_value());
+                }
+                AnyTypeEnum::FunctionType(_) => todo!(),
+                AnyTypeEnum::IntType(_) => {
+                    instruction = pyro_statement
+                        .builder
+                        .build_store(field_ptr, value.into_int_value());
+                }
+                AnyTypeEnum::PointerType(_) => {
+                    instruction = pyro_statement
+                        .builder
+                        .build_store(field_ptr, value.into_pointer_value());
+                }
+                AnyTypeEnum::StructType(_) => todo!(),
+                AnyTypeEnum::VectorType(_) => todo!(),
+                AnyTypeEnum::VoidType(_) => todo!(),
+            }
+
+            Ok(instruction.as_any_value_enum())
+        }
         _ => Err(format!("Not a valid Let statement")),
     }
 }
@@ -346,7 +498,7 @@ fn build_return<'a, 'ctx>(
     }
 }
 
-fn load_identifier<'a, 'ctx>(
+fn build_load_identifier<'a, 'ctx>(
     pyro_statement: &mut PyroStatement<'a, 'ctx>,
 ) -> Result<AnyValueEnum<'ctx>, String> {
     match pyro_statement.statement.clone() {

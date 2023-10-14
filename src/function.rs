@@ -17,6 +17,7 @@ struct PyroFunction<'a, 'ctx> {
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
     string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+    class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     identifier: String,
     arguments: Vec<Variable>,
@@ -31,6 +32,7 @@ pub(crate) fn compile_function<'a, 'ctx>(
     module: &'a Module<'ctx>,
     builder: &'a Builder<'ctx>,
     string_globals: &'a mut HashMap<String, PointerValue<'ctx>>,
+    class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     function_declaration: ASTNode,
 ) -> Result<FunctionValue<'ctx>, String> {
@@ -46,6 +48,7 @@ pub(crate) fn compile_function<'a, 'ctx>(
             module,
             builder,
             string_globals,
+            class_fields,
 
             identifier,
             arguments,
@@ -114,6 +117,7 @@ fn build_function_body<'a, 'ctx>(function: &mut PyroFunction<'a, 'ctx>) -> Resul
             function.module,
             function.builder,
             function.string_globals,
+            function.class_fields,
             entry_block(function),
             &mut function.variables,
             pyro_statement,

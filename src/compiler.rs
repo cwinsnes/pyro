@@ -24,6 +24,7 @@ pub(crate) struct Compiler<'ctx> {
     builder: Builder<'ctx>,
 
     string_constants: HashMap<String, PointerValue<'ctx>>,
+    class_fields: HashMap<String, HashMap<String, u32>>,
 }
 
 impl<'ctx> Compiler<'ctx> {
@@ -38,6 +39,7 @@ impl<'ctx> Compiler<'ctx> {
             builder: context.create_builder(),
 
             string_constants: HashMap::new(),
+            class_fields: HashMap::new(),
         }
     }
 
@@ -89,31 +91,23 @@ impl<'ctx> Compiler<'ctx> {
             ASTNode::Program(program_contents) => {
                 for content in program_contents {
                     match content {
-                        ASTNode::FunctionDeclaration {
-                            identifier: _,
-                            arguments: _,
-                            return_type: _,
-                            body: _,
-                        } => {
+                        ASTNode::FunctionDeclaration { .. } => {
                             function::compile_function(
                                 self.context,
                                 &self.module,
                                 &self.builder,
                                 &mut self.string_constants,
+                                &mut self.class_fields,
                                 content,
                             )?;
                         }
-                        ASTNode::ClassDeclaration {
-                            identifier: _,
-                            fields: _,
-                            methods: _,
-                        } => {
-                            println!("Defining a class");
+                        ASTNode::ClassDeclaration { .. } => {
                             class::define_class(
                                 self.context,
                                 &self.module,
                                 &self.builder,
                                 &mut self.string_constants,
+                                &mut self.class_fields,
                                 content,
                             )?;
                         }

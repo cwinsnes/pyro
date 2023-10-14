@@ -1,0 +1,13 @@
+class TestClass {
+    integer counter;
+}
+
+class TestClass2 {
+    string teststring;
+}
+
+func main() > integer {
+    let class_thing = create TestClass;
+    destroy class_thing;
+    return 0;
+}
