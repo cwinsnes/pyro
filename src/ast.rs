@@ -491,6 +491,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_create_statement(&mut self) -> Result<ASTNode, String> {
+        self.expect(Token::Create)?;
         let variable_type = self.expect_variable_type()?;
         if self.peek_ahead() == Token::OpenBracket {
             self.expect(Token::OpenBracket)?;
@@ -506,8 +507,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_destroy_variable(&mut self) -> Result<ASTNode, String> {
+        self.expect(Token::Destroy)?;
         let variable_name = self.expect_identifier()?;
         Ok(ASTNode::DestroyVariable(variable_name))
+    }
+
+    fn parse_identifier(&mut self) -> Result<ASTNode, String> {
+        let return_node: ASTNode;
+        if self.peek_ahead() == Token::OpenParen {
+            return_node = self.parse_function_call()?;
+        } else if self.peek_ahead() == Token::OpenBracket {
+            return_node = self.parse_array_access()?;
+        } else if self.peek_ahead() == Token::EqualSign {
+            return_node = self.parse_variable_assignment()?;
+        } else if self.peek_ahead() == Token::Dot {
+            return_node = self.parse_object_access()?
+        } else {
+            let identifier = self.expect_identifier()?;
+            return_node = ASTNode::Identifier(identifier);
+        }
+        Ok(return_node)
     }
 
     /// Parse an expression from the input tokens.
@@ -531,26 +550,13 @@ impl<'a> Parser<'a> {
                 left = ASTNode::StringLiteral(string);
             }
             Token::Create => {
-                self.advance()?;
                 left = self.parse_create_statement()?;
             }
             Token::Destroy => {
-                self.advance()?;
                 left = self.parse_destroy_variable()?;
             }
-            Token::Identifier(literal) => {
-                if self.peek_ahead() == Token::OpenParen {
-                    left = self.parse_function_call()?;
-                } else if self.peek_ahead() == Token::OpenBracket {
-                    left = self.parse_array_access()?;
-                } else if self.peek_ahead() == Token::EqualSign {
-                    left = self.parse_variable_assignment()?;
-                } else if self.peek_ahead() == Token::Dot {
-                    left = self.parse_object_access()?
-                } else {
-                    self.advance()?;
-                    left = ASTNode::Identifier(literal);
-                }
+            Token::Identifier(_) => {
+                left = self.parse_identifier()?;
             }
             other => return Err(format!("Expected expression but got {:?}", other)),
         }
