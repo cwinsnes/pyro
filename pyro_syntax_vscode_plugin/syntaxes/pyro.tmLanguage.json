@@ -1,0 +1,86 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Pyro",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#functions"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#built-ins"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line",
+					"match": "#.*\\n"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.pyro",
+					"match": "\\b(return)\\b"
+				},
+				{
+					"name": "keyword.other.pyro",
+					"match": "\\b(class|func|let|create|destroy)\\b"
+				}
+			]
+		},
+		"functions": {
+			"patterns": [
+				{
+					"name": "support.function.pyro",
+					"match": "\\b(print)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.pyro",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.pyro",
+					"match": "\\\\."
+				}
+			]
+		},
+		"built-ins": {
+			"patterns": [
+				{
+					"name": "support.type.pyro",
+					"match": "\\b(integer|string|boolean|float)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.numeric.pyro",
+					"match": "\\b[0-9]+\\b"
+				},
+				{
+					"name": "constant.language.pyro",
+					"match": "\\b(true|false)\\b"
+				}
+			]
+		}
+	},
+	"scopeName": "source.pyro"
+}

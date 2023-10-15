@@ -1,0 +1,25 @@
+{
+  "name": "pyro-syntax",
+  "displayName": "Pyro syntax",
+  "description": "Syntax for the Pyro programming language",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "pyro",
+      "aliases": ["Pyro", "pyro"],
+      "extensions": ["pyro"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "pyro",
+      "scopeName": "source.pyro",
+      "path": "./syntaxes/pyro.tmLanguage.json"
+    }]
+  }
+}
