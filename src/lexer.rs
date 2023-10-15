@@ -115,6 +115,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Consume input until a specified character is encountered.
+    /// If the target character is not encountered, the entire
+    /// input sequence will be consumed.
+    fn consume_until(&mut self, target: char) {
+        while let Some(c) = self.input.peek() {
+            if *c == target {
+                break;
+            }
+            self.input.next();
+        }
+    }
+
     /// Scan input for a numeric literal value.
     ///
     /// Will continue scanning until a non-decimal number value is
@@ -222,6 +234,11 @@ impl<'a> Lexer<'a> {
         while let Some(&c) = self.input.peek() {
             let return_token;
             match c {
+                '#' => {
+                    self.consume_until('\n');
+                    self.consume_whitespace();
+                    continue;
+                }
                 '0'..='9' => {
                     return_token = self.scan_number()?;
                 }
@@ -342,6 +359,22 @@ mod tests {
         let mut lexer = lexer_from_str("let");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Let);
+    }
+
+    #[test]
+    fn test_comment_text() {
+        let mut lexer = lexer_from_str("# foo bar");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Eof);
+    }
+
+    #[test]
+    fn test_comment_after_expression() {
+        let mut lexer = lexer_from_str("foo # bar");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Identifier("foo".to_string()));
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Eof);
     }
 
     #[test]

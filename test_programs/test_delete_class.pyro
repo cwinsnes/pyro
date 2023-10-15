@@ -3,6 +3,8 @@ class TestClass {
     string thing;
 }
 
+# Create a class and assign values to the fields.
+# Because we only use a static string, no memory should leak.
 func main() > integer {
     let class_thing = create TestClass;
     class_thing.counter = 3;

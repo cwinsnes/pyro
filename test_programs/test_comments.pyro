@@ -1,0 +1,6 @@
+func main() {
+# This is a comment that should be allowed.
+    # As should this.
+    let number = 3; # As well as this
+}
+# And a comment at the end for sure.
