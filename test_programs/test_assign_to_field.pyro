@@ -1,0 +1,15 @@
+class TestClass {
+    integer counter;
+    string name;
+}
+
+func main() > integer {
+
+    let testing = create TestClass;
+    print("{integer}", testing.counter);
+    testing.counter = 3;
+    testing.name = "Name of the object";
+    print("{integer}", testing.counter);
+    print("{string}", testing.name);
+    return 0;
+}

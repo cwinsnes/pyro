@@ -1,4 +1,5 @@
 mod ast;
+mod class;
 mod common_utils;
 mod compiler;
 mod function;
@@ -41,7 +42,7 @@ fn main() {
     let ast = parser.parse_program();
 
     if ast.is_err() {
-        println!("{:?}", ast.unwrap_err());
+        println!("{}", ast.unwrap_err());
         return;
     }
 

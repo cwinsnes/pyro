@@ -1,0 +1,12 @@
+class TestClass {
+    integer counter;
+    boolean name;
+}
+
+func main() > integer {
+
+    let testing = create TestClass;
+    print("{integer}", testing.counter);
+    print("{boolean}", testing.name);
+    return 0;
+}

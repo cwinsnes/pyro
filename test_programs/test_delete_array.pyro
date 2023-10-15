@@ -1,0 +1,6 @@
+func main() > integer {
+    let arr = create integer[2];
+
+    destroy arr;
+    return 0;
+}

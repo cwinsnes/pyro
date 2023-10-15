@@ -15,29 +15,31 @@ use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::ast::ASTNode;
-
-use crate::function::PyroFunction;
+use crate::{class, function};
 
 /// Compiler for the Pyro programming language.
-pub struct Compiler<'ctx> {
+pub(crate) struct Compiler<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
 
     string_constants: HashMap<String, PointerValue<'ctx>>,
+    class_fields: HashMap<String, HashMap<String, u32>>,
 }
 
 impl<'ctx> Compiler<'ctx> {
     /// Create a new compiler using the provided Inkwell LLVM context.
     ///
-    /// The LLVM module used throughout compilation will use the name `module_name`.
-    pub fn new(module_name: String, context: &'ctx Context) -> Self {
+    /// The LLVM module used throughout compilation will use the name
+    /// `module_name`.
+    pub(crate) fn new(module_name: String, context: &'ctx Context) -> Self {
         Self {
             context,
             module: context.create_module(&module_name),
             builder: context.create_builder(),
 
             string_constants: HashMap::new(),
+            class_fields: HashMap::new(),
         }
     }
 
@@ -74,7 +76,7 @@ impl<'ctx> Compiler<'ctx> {
             .add_function("print", print_type, Some(Linkage::External));
     }
 
-    pub fn compile(
+    pub(crate) fn compile(
         mut self,
         ast: ASTNode,
         output_path: Option<&Path>,
@@ -86,15 +88,31 @@ impl<'ctx> Compiler<'ctx> {
         self.add_print();
 
         match ast {
-            ASTNode::Program(functions) => {
-                for function_declaration in functions {
-                    PyroFunction::compile_function(
-                        self.context,
-                        &self.module,
-                        &self.builder,
-                        &mut self.string_constants,
-                        function_declaration,
-                    )?;
+            ASTNode::Program(program_contents) => {
+                for content in program_contents {
+                    match content {
+                        ASTNode::FunctionDeclaration { .. } => {
+                            function::compile_function(
+                                self.context,
+                                &self.module,
+                                &self.builder,
+                                &mut self.string_constants,
+                                &mut self.class_fields,
+                                content,
+                            )?;
+                        }
+                        ASTNode::ClassDeclaration { .. } => {
+                            class::define_class(
+                                self.context,
+                                &self.module,
+                                &self.builder,
+                                &mut self.string_constants,
+                                &mut self.class_fields,
+                                content,
+                            )?;
+                        }
+                        _ => todo!(),
+                    }
                 }
 
                 // TODO: Everything below this should be moved around
@@ -112,7 +130,8 @@ impl<'ctx> Compiler<'ctx> {
                             .expect("Error creating temporary file");
                         let output_path = output_path.unwrap().to_str().unwrap();
 
-                        // TODO: Make this actually look for library instead of hard coded debug path
+                        // TODO: Make this actually look for library instead of hard coded debug
+                        // path
                         Command::new("clang")
                             .args([
                                 "-no-pie",
@@ -123,13 +142,15 @@ impl<'ctx> Compiler<'ctx> {
                             ])
                             .output()
                             .expect("Error compiling");
+                    } else {
+                        return Err("Error creating temporary file".to_string());
                     }
                     return Ok(None);
                 } else {
                     return Ok(Some(self.module.print_to_string()));
                 }
             }
-            _ => unimplemented!(),
+            _ => return Err("Not a program AST".to_string()),
         }
     }
 }
