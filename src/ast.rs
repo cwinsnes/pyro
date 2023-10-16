@@ -49,6 +49,11 @@ pub(crate) enum ASTNode {
     },
     FunctionCall(String, Vec<ASTNode>),
 
+    IfStatement {
+        condition: Box<ASTNode>,
+        then_body: Vec<ASTNode>,
+    },
+
     ClassDeclaration {
         identifier: String,
         fields: Vec<Variable>,
@@ -389,8 +394,25 @@ impl<'a> Parser<'a> {
     fn parse_return_statement(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::Return)?;
         let expression = self.parse_expression()?;
+        self.expect(Token::SemiColon)?;
 
         Ok(ASTNode::ReturnStatement(Box::new(expression)))
+    }
+
+    /// Parse an if statement and an optional else-branch.
+    fn parse_if_statement(&mut self) -> Result<ASTNode, String> {
+        self.expect(Token::If)?;
+        self.expect(Token::OpenParen)?;
+
+        let condition = self.parse_expression()?;
+
+        self.expect(Token::CloseParen)?;
+        let statements = self.parse_statement_list()?;
+
+        Ok(ASTNode::IfStatement {
+            condition: Box::new(condition),
+            then_body: statements,
+        })
     }
 
     /// Parse a statement in general.
@@ -406,14 +428,20 @@ impl<'a> Parser<'a> {
             Token::Return => {
                 return_node = self.parse_return_statement()?;
             }
+            Token::Destroy => {
+                return_node = self.parse_destroy_statement()?;
+            }
+            Token::If => {
+                return_node = self.parse_if_statement()?;
+            }
             Token::Eof => {
                 return Err("Reached EOF while parsing statements".to_string());
             }
             _ => {
                 return_node = self.parse_expression()?;
+                self.expect(Token::SemiColon)?;
             }
         }
-        self.expect(Token::SemiColon)?;
         Ok(return_node)
     }
 
@@ -424,7 +452,12 @@ impl<'a> Parser<'a> {
         self.expect(Token::Let)?;
         identifier = self.expect_identifier()?;
         self.expect(Token::EqualSign)?;
-        expression = self.parse_expression()?;
+        if self.peek_ahead() == Token::Create {
+            expression = self.parse_create()?;
+        } else {
+            expression = self.parse_expression()?;
+        }
+        self.expect(Token::SemiColon)?;
 
         Ok(ASTNode::LetDeclaration(identifier, Box::new(expression)))
     }
@@ -490,7 +523,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_create_statement(&mut self) -> Result<ASTNode, String> {
+    fn parse_create(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::Create)?;
         let variable_type = self.expect_variable_type()?;
         if self.peek_ahead() == Token::OpenBracket {
@@ -506,9 +539,10 @@ impl<'a> Parser<'a> {
         Ok(ASTNode::ObjectAllocation(variable_type))
     }
 
-    fn parse_destroy_variable(&mut self) -> Result<ASTNode, String> {
+    fn parse_destroy_statement(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::Destroy)?;
         let variable_name = self.expect_identifier()?;
+        self.expect(Token::SemiColon)?;
         Ok(ASTNode::DestroyVariable(variable_name))
     }
 
@@ -548,12 +582,6 @@ impl<'a> Parser<'a> {
             Token::StringLiteral(string) => {
                 self.advance()?;
                 left = ASTNode::StringLiteral(string);
-            }
-            Token::Create => {
-                left = self.parse_create_statement()?;
-            }
-            Token::Destroy => {
-                left = self.parse_destroy_variable()?;
             }
             Token::Identifier(_) => {
                 left = self.parse_identifier()?;
@@ -950,6 +978,62 @@ mod tests {
                                 );
                             }
                             _ => panic!("Expected let declaration"),
+                        }
+                    }
+                    _ => panic!("Expected function declaration"),
+                }
+            }
+            _ => panic!("Expected program"),
+        }
+    }
+
+    #[test]
+    fn test_if_conditional() {
+        let program = "
+            func foo() > boolean {
+                if (true) {
+                    return true;
+                }
+            }";
+        let lexer = Lexer::new(program);
+
+        let mut parser = super::Parser::new(lexer);
+        let ast = parser.parse_program();
+        if ast.is_err() {
+            panic!("{:?}", ast);
+        }
+
+        let ast = ast.unwrap();
+        match ast {
+            ASTNode::Program(functions) => {
+                assert_eq!(functions.len(), 1);
+                let function = functions.first().unwrap();
+                match function {
+                    ASTNode::FunctionDeclaration {
+                        identifier,
+                        arguments,
+                        return_type: _,
+                        body,
+                    } => {
+                        assert_eq!(identifier, "foo");
+                        assert_eq!(arguments.len(), 0);
+                        assert_eq!(body.len(), 1);
+
+                        match body.get(0).unwrap() {
+                            ASTNode::IfStatement {
+                                condition,
+                                then_body,
+                            } => {
+                                assert_eq!(**condition, ASTNode::BooleanLiteral(true));
+                                assert_eq!(then_body.len(), 1);
+                                assert_eq!(
+                                    then_body.first().unwrap(),
+                                    &ASTNode::ReturnStatement(Box::new(ASTNode::BooleanLiteral(
+                                        true
+                                    )))
+                                );
+                            }
+                            _ => panic!("Expected if statement"),
                         }
                     }
                     _ => panic!("Expected function declaration"),

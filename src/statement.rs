@@ -78,6 +78,7 @@ fn compile_statement_llvm<'a, 'ctx>(
         ASTNode::ArrayAllocation { .. } => build_array_allocation(pyro_statement),
         ASTNode::FunctionDeclaration { .. } => Err(format!("Cannot declare function as statement")),
         ASTNode::ClassDeclaration { .. } => Err(format!("Cannot declare class as statement")),
+        ASTNode::IfStatement { .. } => Err(format!("Not implemented yet")),
         ASTNode::ObjectAllocation(..) => build_object_allocation(pyro_statement),
         ASTNode::ObjectFieldAccess { .. } => build_object_access(pyro_statement),
         ASTNode::FunctionCall(..) => build_function_call(pyro_statement),
