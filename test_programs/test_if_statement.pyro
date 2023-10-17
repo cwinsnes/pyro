@@ -1,0 +1,7 @@
+func main() {
+    print("Before IF");
+    if (true) {
+        print("Inside IF");
+    }
+    print("After IF");
+}

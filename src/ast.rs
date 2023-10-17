@@ -452,7 +452,7 @@ impl<'a> Parser<'a> {
         self.expect(Token::Let)?;
         identifier = self.expect_identifier()?;
         self.expect(Token::EqualSign)?;
-        if self.peek_ahead() == Token::Create {
+        if self.peek_current() == Token::Create {
             expression = self.parse_create()?;
         } else {
             expression = self.parse_expression()?;
@@ -526,6 +526,7 @@ impl<'a> Parser<'a> {
     fn parse_create(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::Create)?;
         let variable_type = self.expect_variable_type()?;
+
         if self.peek_ahead() == Token::OpenBracket {
             self.expect(Token::OpenBracket)?;
             let size = self.parse_expression()?;
@@ -536,6 +537,7 @@ impl<'a> Parser<'a> {
                 size: Box::new(size),
             });
         }
+
         Ok(ASTNode::ObjectAllocation(variable_type))
     }
 
