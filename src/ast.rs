@@ -22,6 +22,10 @@ pub(crate) enum Operator {
     Minus,
     Multiplication,
     Division,
+
+    LessThan,
+    GreaterThan,
+    EqualTo,
 }
 
 fn token_to_operator(token: &Token) -> Result<Operator, String> {
@@ -30,6 +34,11 @@ fn token_to_operator(token: &Token) -> Result<Operator, String> {
         Token::Minus => Ok(Operator::Minus),
         Token::Asterisk => Ok(Operator::Multiplication),
         Token::Slash => Ok(Operator::Division),
+
+        Token::LessThan => Ok(Operator::LessThan),
+        Token::GreaterThan => Ok(Operator::GreaterThan),
+        Token::EqualTo => Ok(Operator::EqualTo),
+
         _ => Err(format!("Invalid operator: {:?}", token)),
     }
 }
@@ -53,6 +62,11 @@ pub(crate) enum ASTNode {
         condition: Box<ASTNode>,
         then_body: Vec<ASTNode>,
         else_body: Vec<ASTNode>,
+    },
+
+    WhileStatement {
+        condition: Box<ASTNode>,
+        body: Vec<ASTNode>,
     },
 
     ClassDeclaration {
@@ -400,7 +414,9 @@ impl<'a> Parser<'a> {
         Ok(ASTNode::ReturnStatement(Box::new(expression)))
     }
 
-    /// Parse an if statement and an optional else-branch.
+    /// Parse an if statement with an optional else branch.
+    ///
+    /// Returns `Err` if the If statement could not be parsed.
     fn parse_if_statement(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::If)?;
         self.expect(Token::OpenParen)?;
@@ -425,6 +441,24 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a while loop statement.
+    ///
+    /// Returns `Err` if the while loop could not be parsed.
+    fn parse_while_loop(&mut self) -> Result<ASTNode, String> {
+        self.expect(Token::While)?;
+        self.expect(Token::OpenParen)?;
+
+        let condition = self.parse_expression()?;
+
+        self.expect(Token::CloseParen)?;
+        let statements = self.parse_statement_list()?;
+
+        Ok(ASTNode::WhileStatement {
+            condition: Box::new(condition),
+            body: statements,
+        })
+    }
+
     /// Parse a statement in general.
     ///
     /// This method essentially wraps the other statement parsers to use
@@ -443,6 +477,9 @@ impl<'a> Parser<'a> {
             }
             Token::If => {
                 return_node = self.parse_if_statement()?;
+            }
+            Token::While => {
+                return_node = self.parse_while_loop()?;
             }
             Token::Eof => {
                 return Err("Reached EOF while parsing statements".to_string());
@@ -604,6 +641,9 @@ impl<'a> Parser<'a> {
             || self.check(Token::Minus)
             || self.check(Token::Asterisk)
             || self.check(Token::Slash)
+            || self.check(Token::LessThan)
+            || self.check(Token::GreaterThan)
+            || self.check(Token::EqualTo)
         {
             let operator = token_to_operator(&self.peek_current())?;
             self.advance()?;

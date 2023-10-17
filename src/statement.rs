@@ -1,8 +1,8 @@
 extern crate inkwell;
 
 use std::collections::HashMap;
-use std::thread::current;
 
+use inkwell::{FloatPredicate, IntPredicate};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -68,6 +68,24 @@ fn append_basic_block<'a, 'ctx>(
         .insert_basic_block_after(current_block, name))
 }
 
+fn operator_to_int_predicate(token: Operator) -> IntPredicate {
+    match token {
+        Operator::EqualTo => IntPredicate::EQ,
+        Operator::LessThan => IntPredicate::SLT,
+        Operator::GreaterThan => IntPredicate::SGT,
+        _ => panic!("Int Comparison type not implemented"),
+    }
+}
+
+fn operator_to_float_predicate(token: Operator) -> FloatPredicate {
+    match token {
+        Operator::EqualTo => FloatPredicate::OEQ,
+        Operator::LessThan => FloatPredicate::OLT,
+        Operator::GreaterThan => FloatPredicate::OGT,
+        _ => panic!("Float Comparison type not implemented"),
+    }
+}
+
 struct PyroStatement<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
@@ -115,6 +133,7 @@ fn compile_statement_llvm<'a, 'ctx>(
         ASTNode::FunctionDeclaration { .. } => Err(format!("Cannot declare function as statement")),
         ASTNode::ClassDeclaration { .. } => Err(format!("Cannot declare class as statement")),
         ASTNode::IfStatement { .. } => build_if_conditional(pyro_statement),
+        ASTNode::WhileStatement { .. } => build_while_loop(pyro_statement),
         ASTNode::ObjectAllocation(..) => build_object_allocation(pyro_statement),
         ASTNode::ObjectFieldAccess { .. } => build_object_access(pyro_statement),
         ASTNode::FunctionCall(..) => build_function_call(pyro_statement),
@@ -266,6 +285,48 @@ fn build_if_conditional<'a, 'ctx>(
     }
 
     Err(format!("Not a valid if conditional"))
+}
+
+// Build a while loop.
+//
+// Returns the final generated branch instruction.
+fn build_while_loop<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+) -> Result<AnyValueEnum<'ctx>, String> {
+    if let ASTNode::WhileStatement { condition, body } = pyro_statement.statement.clone() {
+        let end_block = append_basic_block(pyro_statement, "end")?;
+        let body_block = append_basic_block(pyro_statement, "body")?;
+        let condition_block = append_basic_block(pyro_statement, "while_condition")?;
+
+        pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+
+        pyro_statement.builder.position_at_end(condition_block);
+        let condition = recursive_statement_compile!(pyro_statement, *condition)?;
+
+        if !condition.is_int_value() {
+            return Err(format!("Condition is not an integer"));
+        }
+        let condition = condition.into_int_value();
+
+        pyro_statement
+            .builder
+            .build_conditional_branch(condition, body_block, end_block);
+
+        pyro_statement.builder.position_at_end(body_block);
+        for statement in body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
+
+        let final_instruction = pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+
+        pyro_statement.builder.position_at_end(end_block);
+        return Ok(final_instruction.as_any_value_enum());
+    }
+    Err(format!("Not a valid while loop"))
 }
 
 // TODO: this should definitely be rewritten to be more readable.
@@ -707,10 +768,6 @@ fn binary_op_construction<'a, 'ctx>(
             let lhs = left.into_int_value();
             let rhs = right.into_int_value();
 
-            if lhs.get_type().get_bit_width() == 1 || rhs.get_type().get_bit_width() == 1 {
-                return Err(format!("Cannot perform binary operation on a bool"));
-            }
-
             if lhs.get_type().get_bit_width() != rhs.get_type().get_bit_width() {
                 return Err(format!(
                     "Cannot perform binary operation on ints of varying bit widths."
@@ -737,6 +794,15 @@ fn binary_op_construction<'a, 'ctx>(
                     op = pyro_statement
                         .builder
                         .build_int_signed_div(lhs, rhs, "intdivision")
+                }
+                Operator::LessThan | Operator::GreaterThan | Operator::EqualTo => {
+                    let predicate = operator_to_int_predicate(operator);
+                    op = pyro_statement.builder.build_int_compare(
+                        predicate,
+                        lhs,
+                        rhs,
+                        "int comparison",
+                    );
                 }
             }
             return Ok(op.as_any_value_enum());
@@ -766,6 +832,16 @@ fn binary_op_construction<'a, 'ctx>(
                     op = pyro_statement
                         .builder
                         .build_float_div(lhs, rhs, "floatdivision")
+                }
+                Operator::LessThan | Operator::GreaterThan | Operator::EqualTo => {
+                    let predicate = operator_to_float_predicate(operator);
+                    let op = pyro_statement.builder.build_float_compare(
+                        predicate,
+                        lhs,
+                        rhs,
+                        "float comparison",
+                    );
+                    return Ok(op.as_any_value_enum());
                 }
             }
             return Ok(op.as_any_value_enum());

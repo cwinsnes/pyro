@@ -38,6 +38,8 @@ pub(crate) enum Token {
     Destroy,
     Create,
     Class,
+    For,
+    While,
 
     // Identifiers and literals
     Identifier(String),
@@ -64,6 +66,8 @@ pub(crate) enum Token {
     Comma,
     Dot,
     GreaterThan,
+    LessThan,
+    EqualTo,
 
     Eof,
 
@@ -84,6 +88,8 @@ lazy_static! {
         map.insert("create", Token::Create);
         map.insert("if", Token::If);
         map.insert("else", Token::Else);
+        map.insert("for", Token::For);
+        map.insert("while", Token::While);
         map.insert("true", Token::BooleanLiteral(true));
         map.insert("false", Token::BooleanLiteral(false));
         map.insert("class", Token::Class);
@@ -276,7 +282,12 @@ impl<'a> Lexer<'a> {
                 }
                 '=' => {
                     self.input.next();
-                    return_token = Token::EqualSign;
+                    if self.input.peek() == Some(&'=') {
+                        self.input.next();
+                        return_token = Token::EqualTo;
+                    } else {
+                        return_token = Token::EqualSign;
+                    }
                 }
                 '(' => {
                     self.input.next();
@@ -313,6 +324,10 @@ impl<'a> Lexer<'a> {
                 '>' => {
                     self.input.next();
                     return_token = Token::GreaterThan;
+                }
+                '<' => {
+                    self.input.next();
+                    return_token = Token::LessThan;
                 }
                 '.' => {
                     self.input.next();
@@ -377,6 +392,20 @@ mod tests {
         let mut lexer = lexer_from_str("else");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Else);
+    }
+
+    #[test]
+    fn test_for_token() {
+        let mut lexer = lexer_from_str("for");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::For);
+    }
+
+    #[test]
+    fn test_while_token() {
+        let mut lexer = lexer_from_str("while");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::While);
     }
 
     #[test]
