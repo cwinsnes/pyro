@@ -1,0 +1,15 @@
+func main() {
+    print("Before IF");
+    if (true) {
+        print("Inside TRUE IF");
+    } else {
+        print("Inside TRUE Else");
+    }
+
+    if (false) {
+        print("Inside FALSE IF");
+    } else {
+        print("Inside FALSE Else");
+    }
+    print("After IF");
+}

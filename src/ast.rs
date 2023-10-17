@@ -52,6 +52,7 @@ pub(crate) enum ASTNode {
     IfStatement {
         condition: Box<ASTNode>,
         then_body: Vec<ASTNode>,
+        else_body: Vec<ASTNode>,
     },
 
     ClassDeclaration {
@@ -407,11 +408,20 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
 
         self.expect(Token::CloseParen)?;
-        let statements = self.parse_statement_list()?;
+        let true_statements = self.parse_statement_list()?;
+
+        let else_statements;
+        if self.peek_current() == Token::Else {
+            self.expect(Token::Else)?;
+            else_statements = self.parse_statement_list()?;
+        } else {
+            else_statements = Vec::new();
+        }
 
         Ok(ASTNode::IfStatement {
             condition: Box::new(condition),
-            then_body: statements,
+            then_body: true_statements,
+            else_body: else_statements,
         })
     }
 
@@ -1025,6 +1035,7 @@ mod tests {
                             ASTNode::IfStatement {
                                 condition,
                                 then_body,
+                                else_body,
                             } => {
                                 assert_eq!(**condition, ASTNode::BooleanLiteral(true));
                                 assert_eq!(then_body.len(), 1);

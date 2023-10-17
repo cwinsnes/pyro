@@ -224,6 +224,7 @@ fn build_if_conditional<'a, 'ctx>(
     if let ASTNode::IfStatement {
         condition,
         then_body,
+        else_body,
     } = pyro_statement.statement.clone()
     {
         let condition = recursive_statement_compile!(pyro_statement, *condition)?;
@@ -252,6 +253,9 @@ fn build_if_conditional<'a, 'ctx>(
         }
 
         pyro_statement.builder.position_at_end(if_false_block);
+        for statement in else_body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
         if if_false_block.get_terminator().is_none() {
             pyro_statement.builder.build_unconditional_branch(end_block);
         }
