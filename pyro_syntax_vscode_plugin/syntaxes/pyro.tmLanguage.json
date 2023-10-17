@@ -38,7 +38,7 @@
 				},
 				{
 					"name": "keyword.other.pyro",
-					"match": "\\b(class|func|let|create|destroy)\\b"
+					"match": "\\b(if|else|class|func|let|create|destroy)\\b"
 				}
 			]
 		},

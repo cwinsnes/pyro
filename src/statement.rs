@@ -1,6 +1,7 @@
 extern crate inkwell;
 
 use std::collections::HashMap;
+use std::thread::current;
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -30,6 +31,41 @@ macro_rules! recursive_statement_compile {
             $eval_stmt,
         )
     };
+}
+
+fn allocate_stack_variable<'a, 'ctx, T: BasicType<'ctx>>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+    name: &str,
+    ty: T,
+) -> Result<PointerValue<'ctx>, String> {
+    if pyro_statement.entry_block.is_some() {
+        let local_builder = pyro_statement.context.create_builder();
+        let entry_block = pyro_statement.entry_block.unwrap();
+
+        match entry_block.get_first_instruction() {
+            Some(first_instruction) => local_builder.position_before(&first_instruction),
+            None => local_builder.position_at_end(entry_block),
+        }
+
+        return Ok(local_builder.build_alloca(ty, name));
+    }
+
+    Err(format!("Let statement without an entry block"))
+}
+
+fn append_basic_block<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+    name: &str,
+) -> Result<BasicBlock<'ctx>, String> {
+    let current_block = pyro_statement.builder.get_insert_block();
+    if current_block.is_none() {
+        return Err(format!("Basic block not found"));
+    }
+    let current_block = current_block.unwrap();
+
+    Ok(pyro_statement
+        .context
+        .insert_basic_block_after(current_block, name))
 }
 
 struct PyroStatement<'a, 'ctx> {
@@ -78,6 +114,7 @@ fn compile_statement_llvm<'a, 'ctx>(
         ASTNode::ArrayAllocation { .. } => build_array_allocation(pyro_statement),
         ASTNode::FunctionDeclaration { .. } => Err(format!("Cannot declare function as statement")),
         ASTNode::ClassDeclaration { .. } => Err(format!("Cannot declare class as statement")),
+        ASTNode::IfStatement { .. } => build_if_conditional(pyro_statement),
         ASTNode::ObjectAllocation(..) => build_object_allocation(pyro_statement),
         ASTNode::ObjectFieldAccess { .. } => build_object_access(pyro_statement),
         ASTNode::FunctionCall(..) => build_function_call(pyro_statement),
@@ -179,6 +216,56 @@ fn build_object_allocation<'a, 'ctx>(
     }
 
     Err(format!("Not a valid object allocation"))
+}
+
+fn build_if_conditional<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+) -> Result<AnyValueEnum<'ctx>, String> {
+    if let ASTNode::IfStatement {
+        condition,
+        then_body,
+        else_body,
+    } = pyro_statement.statement.clone()
+    {
+        let condition = recursive_statement_compile!(pyro_statement, *condition)?;
+
+        if !condition.is_int_value() {
+            return Err(format!("Condition is not an integer"));
+        }
+        let condition = condition.into_int_value();
+
+        let end_block = append_basic_block(pyro_statement, "if_end")?;
+        let if_false_block = append_basic_block(pyro_statement, "if_false")?;
+        let if_true_block = append_basic_block(pyro_statement, "if_true")?;
+
+        let if_branch = pyro_statement.builder.build_conditional_branch(
+            condition,
+            if_true_block,
+            if_false_block,
+        );
+
+        pyro_statement.builder.position_at_end(if_true_block);
+        for statement in then_body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
+        if if_true_block.get_terminator().is_none() {
+            pyro_statement.builder.build_unconditional_branch(end_block);
+        }
+
+        pyro_statement.builder.position_at_end(if_false_block);
+        for statement in else_body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
+        if if_false_block.get_terminator().is_none() {
+            pyro_statement.builder.build_unconditional_branch(end_block);
+        }
+
+        pyro_statement.builder.position_at_end(end_block);
+
+        return Ok(if_branch.as_any_value_enum());
+    }
+
+    Err(format!("Not a valid if conditional"))
 }
 
 // TODO: this should definitely be rewritten to be more readable.
@@ -289,25 +376,6 @@ fn build_function_call<'a, 'ctx>(
     }
 }
 
-fn allocate_stack_variable<'a, 'ctx, T: BasicType<'ctx>>(
-    pyro_statement: &mut PyroStatement<'a, 'ctx>,
-    name: &str,
-    ty: T,
-) -> Result<PointerValue<'ctx>, String> {
-    if pyro_statement.entry_block.is_some() {
-        let local_builder = pyro_statement.context.create_builder();
-        let entry_block = pyro_statement.entry_block.unwrap();
-
-        match entry_block.get_first_instruction() {
-            Some(first_instruction) => local_builder.position_before(&first_instruction),
-            None => local_builder.position_at_end(entry_block),
-        }
-
-        return Ok(local_builder.build_alloca(ty, name));
-    }
-
-    Err(format!("Let statement without an entry block"))
-}
 // TODO: Split this into multiple functions!
 fn build_assignment<'a, 'ctx>(
     pyro_statement: &mut PyroStatement<'a, 'ctx>,

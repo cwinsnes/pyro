@@ -31,6 +31,8 @@ pub(crate) enum Token {
     Boolean,
     Integer,
     Float,
+    If,
+    Else,
     String,
     Return,
     Destroy,
@@ -80,6 +82,8 @@ lazy_static! {
         map.insert("boolean", Token::Boolean);
         map.insert("destroy", Token::Destroy);
         map.insert("create", Token::Create);
+        map.insert("if", Token::If);
+        map.insert("else", Token::Else);
         map.insert("true", Token::BooleanLiteral(true));
         map.insert("false", Token::BooleanLiteral(false));
         map.insert("class", Token::Class);
@@ -359,6 +363,20 @@ mod tests {
         let mut lexer = lexer_from_str("let");
         let token = lexer.next_token().unwrap();
         assert_eq!(token, Token::Let);
+    }
+
+    #[test]
+    fn test_if_token() {
+        let mut lexer = lexer_from_str("if");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::If);
+    }
+
+    #[test]
+    fn test_else_token() {
+        let mut lexer = lexer_from_str("else");
+        let token = lexer.next_token().unwrap();
+        assert_eq!(token, Token::Else);
     }
 
     #[test]
