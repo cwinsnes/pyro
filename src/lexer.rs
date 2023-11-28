@@ -32,6 +32,8 @@ pub(crate) enum Token {
     Integer,
     Float,
     If,
+    From,
+    To,
     Else,
     String,
     Return,
@@ -87,6 +89,8 @@ lazy_static! {
         map.insert("destroy", Token::Destroy);
         map.insert("create", Token::Create);
         map.insert("if", Token::If);
+        map.insert("from", Token::From);
+        map.insert("to", Token::To);
         map.insert("else", Token::Else);
         map.insert("for", Token::For);
         map.insert("while", Token::While);

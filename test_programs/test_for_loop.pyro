@@ -1,0 +1,5 @@
+func main() {
+  for (i from 1 to 10) {
+    print("i is currently {integer}", i);
+  }
+}

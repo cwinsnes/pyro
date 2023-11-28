@@ -6,7 +6,7 @@ use inkwell::module::Module;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
 
-use crate::ast::{ASTNode, Variable};
+use crate::ast::{ASTNode, Argument};
 use crate::common_utils::get_type_from_variable_type;
 
 struct PyroClass<'a, 'ctx> {
@@ -18,7 +18,7 @@ struct PyroClass<'a, 'ctx> {
     class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     identifier: String,
-    fields: Vec<Variable>,
+    fields: Vec<Argument>,
 }
 
 pub(crate) fn define_class<'a, 'ctx>(

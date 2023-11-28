@@ -11,7 +11,7 @@ pub(crate) enum VariableType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Variable {
+pub(crate) struct Argument {
     pub variable_type: VariableType,
     pub identifier: String,
 }
@@ -52,7 +52,7 @@ pub(crate) enum ASTNode {
 
     FunctionDeclaration {
         identifier: String,
-        arguments: Vec<Variable>,
+        arguments: Vec<Argument>,
         return_type: VariableType,
         body: Vec<ASTNode>,
     },
@@ -69,9 +69,15 @@ pub(crate) enum ASTNode {
         body: Vec<ASTNode>,
     },
 
+    ForStatement {
+        iterator_identifier: String,
+        range: (Box<ASTNode>, Box<ASTNode>),
+        body: Vec<ASTNode>,
+    },
+
     ClassDeclaration {
         identifier: String,
-        fields: Vec<Variable>,
+        fields: Vec<Argument>,
         methods: Vec<ASTNode>,
     },
 
@@ -235,27 +241,28 @@ impl<'a> Parser<'a> {
     /// return the resulting `Argument`.
     ///
     /// Returns `Err` if an `Argument` could not be constructed.
-    fn expect_variable(&mut self) -> Result<Variable, String> {
+    fn expect_variable(&mut self) -> Result<Argument, String> {
         let argument_type = self.expect_variable_type()?;
         let identifier = self.expect_identifier()?;
 
-        Ok(Variable {
+        Ok(Argument {
             variable_type: argument_type,
             identifier,
         })
     }
 
-    /// Expect a specific token but do not consume it.
+    /// Assert that a specific token type is the current token in the sequence
+    /// but do not consume it.
     fn check(&self, expected: Token) -> bool {
         self.current_token == expected
     }
 
-    /// Peek at the current token in the sequence.
+    /// Peek at the current token in the sequence without consuming it.
     fn peek_current(&self) -> Token {
         self.current_token.clone()
     }
 
-    /// Look up the next token in the sequence
+    /// Look up the next token in the sequence but do not consume it.
     fn peek_ahead(&self) -> Token {
         self.next_token.clone()
     }
@@ -276,7 +283,7 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn parse_class_variables(&mut self) -> Result<Vec<Variable>, String> {
+    fn parse_class_variables(&mut self) -> Result<Vec<Argument>, String> {
         let mut variables = Vec::new();
 
         if self.check(Token::CloseBrace) || self.check(Token::Func) {
@@ -336,7 +343,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse function argument list enclosed by parenthesis.
-    fn parse_argument_list(&mut self) -> Result<Vec<Variable>, String> {
+    fn parse_argument_list(&mut self) -> Result<Vec<Argument>, String> {
         let mut arguments = Vec::new();
 
         self.expect(Token::OpenParen)?;
@@ -441,9 +448,28 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse a while loop statement.
-    ///
-    /// Returns `Err` if the while loop could not be parsed.
+    fn parse_for_loop(&mut self) -> Result<ASTNode, String> {
+        self.expect(Token::For)?;
+        self.expect(Token::OpenParen)?;
+
+        let identifier = self.expect_identifier()?;
+
+        self.expect(Token::From)?;
+        let range_left = self.parse_expression()?;
+
+        self.expect(Token::To)?;
+        let range_right = self.parse_expression()?;
+
+        self.expect(Token::CloseParen)?;
+        let statements = self.parse_statement_list()?;
+
+        Ok(ASTNode::ForStatement {
+            iterator_identifier: identifier,
+            range: (Box::new(range_left), Box::new(range_right)),
+            body: statements,
+        })
+    }
+
     fn parse_while_loop(&mut self) -> Result<ASTNode, String> {
         self.expect(Token::While)?;
         self.expect(Token::OpenParen)?;
@@ -459,10 +485,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse a statement in general.
+    /// Parse any kind of pyro statement.
     ///
-    /// This method essentially wraps the other statement parsers to use
-    /// the correct one at the correct intance.
+    /// Returns Err if any of the statements was unable to be parsed or if the
+    /// end of file was reached while parsing.
     fn parse_statement(&mut self) -> Result<ASTNode, String> {
         let return_node;
         match self.peek_current() {
@@ -477,6 +503,9 @@ impl<'a> Parser<'a> {
             }
             Token::If => {
                 return_node = self.parse_if_statement()?;
+            }
+            Token::For => {
+                return_node = self.parse_for_loop()?;
             }
             Token::While => {
                 return_node = self.parse_while_loop()?;
@@ -731,15 +760,15 @@ mod tests {
                         assert_eq!(
                             arguments,
                             &vec!(
-                                Variable {
+                                Argument {
                                     variable_type: VariableType::Integer,
                                     identifier: "x".to_string(),
                                 },
-                                Variable {
+                                Argument {
                                     variable_type: VariableType::Integer,
                                     identifier: "y".to_string(),
                                 },
-                                Variable {
+                                Argument {
                                     variable_type: VariableType::Integer,
                                     identifier: "z".to_string(),
                                 },
