@@ -69,8 +69,7 @@ unsafe fn format_str(input_str: &str, vars: &mut VaList) -> String {
 /// with the arguments inserted at the formatting characters.
 ///
 /// # Example usage:
-/// let s = fstring("Hey {} {} to {}!", 1, 2, 3);
-/// println!("{}", s); // prints "Hey 1 2 to 3!"
+/// print("Hey {integer}!", 1); // prints "Hey 1!"
 #[no_mangle]
 unsafe extern "C" fn print(str: *const c_char, mut vars: ...) {
     let input_str = CStr::from_ptr(str).to_str().unwrap();
