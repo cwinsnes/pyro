@@ -2,6 +2,7 @@ mod ast;
 mod class;
 mod common_utils;
 mod compiler;
+mod error;
 mod function;
 mod lexer;
 mod statement;

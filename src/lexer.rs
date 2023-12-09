@@ -23,6 +23,9 @@ use std::str::Chars;
 
 use lazy_static::lazy_static;
 
+use crate::error::CompilerError;
+use crate::error::CompilerErrorType::LexerError;
+
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) enum Token {
     // Keywords
@@ -107,6 +110,7 @@ lazy_static! {
 /// a stream of tokens from an input source string.
 pub(crate) struct Lexer<'a> {
     input: Peekable<Chars<'a>>,
+    current_line: u64,
     eof: bool,
 }
 
@@ -114,6 +118,7 @@ impl<'a> Lexer<'a> {
     pub(crate) fn new(input: &'a str) -> Self {
         Lexer {
             input: input.chars().peekable(),
+            current_line: 1,
             eof: false,
         }
     }
@@ -122,7 +127,9 @@ impl<'a> Lexer<'a> {
     /// character is next in the sequence.
     fn consume_whitespace(&mut self) {
         while let Some(c) = self.input.peek() {
-            if !c.is_whitespace() {
+            if c == &'\n' {
+                self.current_line += 1;
+            } else if !c.is_whitespace() {
                 break;
             }
             self.input.next();
@@ -146,7 +153,7 @@ impl<'a> Lexer<'a> {
     /// Will continue scanning until a non-decimal number value is
     /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number(&mut self) -> Result<Token, String> {
+    fn scan_number(&mut self) -> Result<Token, CompilerError> {
         let mut number = String::new();
         let mut is_float = false;
         while let Some(&c) = self.input.peek() {
@@ -155,13 +162,21 @@ impl<'a> Lexer<'a> {
                 self.input.next();
             } else if c == '.' {
                 if is_float {
-                    return Err(format!("Multiple decimal points in number literal"));
+                    return Err(CompilerError::new(
+                        LexerError,
+                        self.current_line,
+                        "Multiple decimal points in number literal",
+                    ));
                 }
                 is_float = true;
                 number.push(c);
                 self.input.next();
             } else if c.is_alphabetic() {
-                return Err(format!("Invalid number literal: {:?}{:?}", number, c));
+                return Err(CompilerError::new(
+                    LexerError,
+                    self.current_line,
+                    format!("Invalid number literal: {:?}{:?}", number, c),
+                ));
             } else {
                 break;
             }
@@ -170,13 +185,21 @@ impl<'a> Lexer<'a> {
         if is_float {
             let number = number.parse::<f64>();
             if number.is_err() {
-                return Err(format!("Error when scanning floating literal"));
+                return Err(CompilerError::new(
+                    LexerError,
+                    self.current_line,
+                    "Error when scanning float number literal",
+                ));
             }
             Ok(Token::FloatLiteral(number.unwrap()))
         } else {
             let number = number.parse::<i64>();
             if number.is_err() {
-                return Err(format!("Error when scanning integer literal"));
+                return Err(CompilerError::new(
+                    LexerError,
+                    self.current_line,
+                    "Error when scanning integer literal",
+                ));
             }
             Ok(Token::IntegerLiteral(number.unwrap()))
         }
@@ -201,7 +224,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scan the input for a String delimited by '"' characters.
-    fn scan_string(&mut self) -> Result<String, String> {
+    fn scan_string(&mut self) -> Result<String, CompilerError> {
         let mut string = String::new();
         self.input.next();
         while let Some(&c) = self.input.peek() {
@@ -218,10 +241,18 @@ impl<'a> Lexer<'a> {
                     Some('r') => '\r',
                     Some('0') => '\0',
                     Some(c) => {
-                        return Err(format!("Invalid escape sequence: \\{}", c));
+                        return Err(CompilerError::new(
+                            LexerError,
+                            self.current_line,
+                            format!("Invalid escape sequence: \\{}", c),
+                        ));
                     }
                     None => {
-                        return Err(String::from("Invalid escape sequence: \\"));
+                        return Err(CompilerError::new(
+                            LexerError,
+                            self.current_line,
+                            "Invalid escape sequence: \\",
+                        ));
                     }
                 });
             } else {
@@ -243,7 +274,7 @@ impl<'a> Lexer<'a> {
     /// # Panics
     /// This function will panic if an unexpected character is encountered in
     /// the sequence.
-    pub(crate) fn next_token(&mut self) -> Result<Token, String> {
+    pub(crate) fn next_token(&mut self) -> Result<Token, CompilerError> {
         self.consume_whitespace();
         while let Some(&c) = self.input.peek() {
             let return_token;
@@ -251,6 +282,7 @@ impl<'a> Lexer<'a> {
                 '#' => {
                     self.consume_until('\n');
                     self.consume_whitespace();
+                    self.current_line += 1;
                     continue;
                 }
                 '0'..='9' => {
@@ -338,7 +370,11 @@ impl<'a> Lexer<'a> {
                     return_token = Token::Dot;
                 }
                 _ => {
-                    return Err(format!("Unexpected character: {}", c));
+                    return Err(CompilerError::new(
+                        LexerError,
+                        self.current_line,
+                        format!("Unexpected character: {}", c),
+                    ));
                 }
             }
             return Ok(return_token);
@@ -351,7 +387,7 @@ impl<'a> Lexer<'a> {
 /// Iterator implementation for Lexer.
 /// Returns tokens in sequence until no more tokens can be found.
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token, String>;
+    type Item = Result<Token, CompilerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.eof {
