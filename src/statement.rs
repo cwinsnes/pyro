@@ -378,6 +378,8 @@ fn create_range_update_variable<'a, 'ctx>(
         _ => todo!(),
     }
 
+    pyro_statement.builder.position_at_end(exit_block);
+
     return Ok(update_var);
 }
 
@@ -409,11 +411,15 @@ fn build_for_loop<'a, 'ctx>(
             &iterator_identifier,
             starting_value.get_type(),
         )?;
-        pyro_statement.local_variables.insert(iterator_identifier, condition_var);
+        pyro_statement
+            .local_variables
+            .insert(iterator_identifier, condition_var);
 
         let update_var =
             create_range_update_variable(pyro_statement, &starting_value, &ending_value)?;
-        let update_var_value = pyro_statement.builder.build_load(update_var, "for loop update load");
+        let update_var_value = pyro_statement
+            .builder
+            .build_load(update_var, "for_loop_update_load");
 
         pyro_statement
             .builder
@@ -424,12 +430,14 @@ fn build_for_loop<'a, 'ctx>(
             .build_unconditional_branch(condition_block);
         pyro_statement.builder.position_at_end(condition_block);
 
-        let update_temp = pyro_statement.builder.build_load(condition_var, "for loop load");
+        let update_temp = pyro_statement
+            .builder
+            .build_load(condition_var, "for_loop_load");
         let update_comparison = pyro_statement.builder.build_int_compare(
-            IntPredicate::EQ,
+            IntPredicate::NE,
             update_temp.into_int_value(),
             ending_value.into_int_value(),
-            "for loop compare",
+            "for_loop_compare",
         );
 
         pyro_statement
@@ -437,17 +445,22 @@ fn build_for_loop<'a, 'ctx>(
             .build_conditional_branch(update_comparison, body_block, end_block);
 
         pyro_statement.builder.position_at_end(body_block);
-        let addition = pyro_statement.builder.build_int_add(
-            update_temp.into_int_value(),
-            update_var_value.into_int_value(),
-            "for loop update",
-        );
-        pyro_statement.builder.build_store(condition_var, update_temp);
 
         for statement in body {
             recursive_statement_compile!(pyro_statement, statement)?;
         }
-        let final_instruction = pyro_statement.builder.build_unconditional_branch(condition_block);
+
+        let addition = pyro_statement.builder.build_int_add(
+            update_temp.into_int_value(),
+            // pyro_statement.context.i64_type().const_int(1, false),
+            update_var_value.into_int_value(),
+            "for loop update",
+        );
+
+        pyro_statement.builder.build_store(condition_var, addition);
+        let final_instruction = pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
 
         pyro_statement.builder.position_at_end(end_block);
         return Ok(final_instruction.as_any_value_enum());
