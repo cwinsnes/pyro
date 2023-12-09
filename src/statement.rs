@@ -1,8 +1,8 @@
 extern crate inkwell;
 
 use std::collections::HashMap;
-use std::thread::current;
 
+use inkwell::{FloatPredicate, IntPredicate};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -68,6 +68,24 @@ fn append_basic_block<'a, 'ctx>(
         .insert_basic_block_after(current_block, name))
 }
 
+fn operator_to_int_predicate(token: Operator) -> IntPredicate {
+    match token {
+        Operator::EqualTo => IntPredicate::EQ,
+        Operator::LessThan => IntPredicate::SLT,
+        Operator::GreaterThan => IntPredicate::SGT,
+        _ => panic!("Int Comparison type not implemented"),
+    }
+}
+
+fn operator_to_float_predicate(token: Operator) -> FloatPredicate {
+    match token {
+        Operator::EqualTo => FloatPredicate::OEQ,
+        Operator::LessThan => FloatPredicate::OLT,
+        Operator::GreaterThan => FloatPredicate::OGT,
+        _ => panic!("Float Comparison type not implemented"),
+    }
+}
+
 struct PyroStatement<'a, 'ctx> {
     context: &'ctx Context,
     module: &'a Module<'ctx>,
@@ -115,6 +133,8 @@ fn compile_statement_llvm<'a, 'ctx>(
         ASTNode::FunctionDeclaration { .. } => Err(format!("Cannot declare function as statement")),
         ASTNode::ClassDeclaration { .. } => Err(format!("Cannot declare class as statement")),
         ASTNode::IfStatement { .. } => build_if_conditional(pyro_statement),
+        ASTNode::ForStatement { .. } => build_for_loop(pyro_statement),
+        ASTNode::WhileStatement { .. } => build_while_loop(pyro_statement),
         ASTNode::ObjectAllocation(..) => build_object_allocation(pyro_statement),
         ASTNode::ObjectFieldAccess { .. } => build_object_access(pyro_statement),
         ASTNode::FunctionCall(..) => build_function_call(pyro_statement),
@@ -266,6 +286,187 @@ fn build_if_conditional<'a, 'ctx>(
     }
 
     Err(format!("Not a valid if conditional"))
+}
+
+// Build a while loop and return the final generated branch instruction.
+fn build_while_loop<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+) -> Result<AnyValueEnum<'ctx>, String> {
+    if let ASTNode::WhileStatement { condition, body } = pyro_statement.statement.clone() {
+        let end_block = append_basic_block(pyro_statement, "end")?;
+        let body_block = append_basic_block(pyro_statement, "body")?;
+        let condition_block = append_basic_block(pyro_statement, "while_condition")?;
+
+        pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+
+        pyro_statement.builder.position_at_end(condition_block);
+        let condition = recursive_statement_compile!(pyro_statement, *condition)?;
+
+        if !condition.is_int_value() {
+            return Err(format!("Condition is not an integer"));
+        }
+        let condition = condition.into_int_value();
+
+        pyro_statement
+            .builder
+            .build_conditional_branch(condition, body_block, end_block);
+
+        pyro_statement.builder.position_at_end(body_block);
+        for statement in body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
+
+        let final_instruction = pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+
+        pyro_statement.builder.position_at_end(end_block);
+        return Ok(final_instruction.as_any_value_enum());
+    }
+    Err(format!("Not a valid while loop"))
+}
+
+fn create_range_update_variable<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+    starting_value: &BasicValueEnum<'ctx>,
+    end_value: &BasicValueEnum<'ctx>,
+) -> Result<PointerValue<'ctx>, String> {
+    let i64_type = pyro_statement.context.i64_type();
+    let const_one = i64_type.const_int(1, false);
+
+    let exit_block = append_basic_block(pyro_statement, "range_variable_exit")?;
+    let negative_update = append_basic_block(pyro_statement, "range_variable_negative")?;
+    let positive_update = append_basic_block(pyro_statement, "range_variable_positive")?;
+
+    let update_var = allocate_stack_variable(
+        pyro_statement,
+        &generate_constant_name(),
+        starting_value.get_type(),
+    )?;
+
+    match starting_value.get_type() {
+        BasicTypeEnum::IntType(_) => {
+            let comparison = pyro_statement.builder.build_int_compare(
+                IntPredicate::SLE,
+                starting_value.into_int_value(),
+                end_value.into_int_value(),
+                "range_comparison",
+            );
+            pyro_statement.builder.build_conditional_branch(
+                comparison,
+                positive_update,
+                negative_update,
+            );
+
+            pyro_statement.builder.position_at_end(positive_update);
+            pyro_statement.builder.build_store(update_var, const_one);
+            pyro_statement
+                .builder
+                .build_unconditional_branch(exit_block);
+
+            pyro_statement.builder.position_at_end(negative_update);
+            pyro_statement
+                .builder
+                .build_store(update_var, const_one.const_neg());
+            pyro_statement
+                .builder
+                .build_unconditional_branch(exit_block);
+        }
+        BasicTypeEnum::FloatType(_) => todo!(),
+        _ => todo!(),
+    }
+
+    pyro_statement.builder.position_at_end(exit_block);
+
+    return Ok(update_var);
+}
+
+fn build_for_loop<'a, 'ctx>(
+    pyro_statement: &mut PyroStatement<'a, 'ctx>,
+) -> Result<AnyValueEnum<'ctx>, String> {
+    // TODO: This only works for integer for loop at the moment.
+    if let ASTNode::ForStatement {
+        iterator_identifier,
+        range,
+        body,
+    } = pyro_statement.statement.clone()
+    {
+        let end_block = append_basic_block(pyro_statement, "end")?;
+        let body_block = append_basic_block(pyro_statement, "for_body")?;
+        let condition_block = append_basic_block(pyro_statement, "for_condition")?;
+
+        let starting_value = into_basic_value_enum(recursive_statement_compile!(
+            pyro_statement,
+            *range.0.clone()
+        )?)?;
+        let ending_value = into_basic_value_enum(recursive_statement_compile!(
+            pyro_statement,
+            *range.1.clone()
+        )?)?;
+
+        let condition_var = allocate_stack_variable(
+            pyro_statement,
+            &iterator_identifier,
+            starting_value.get_type(),
+        )?;
+        pyro_statement
+            .local_variables
+            .insert(iterator_identifier, condition_var);
+
+        let update_var =
+            create_range_update_variable(pyro_statement, &starting_value, &ending_value)?;
+        let update_var_value = pyro_statement
+            .builder
+            .build_load(update_var, "for_loop_update_load");
+
+        pyro_statement
+            .builder
+            .build_store(condition_var, starting_value);
+
+        pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+        pyro_statement.builder.position_at_end(condition_block);
+
+        let update_temp = pyro_statement
+            .builder
+            .build_load(condition_var, "for_loop_load");
+        let update_comparison = pyro_statement.builder.build_int_compare(
+            IntPredicate::NE,
+            update_temp.into_int_value(),
+            ending_value.into_int_value(),
+            "for_loop_compare",
+        );
+
+        pyro_statement
+            .builder
+            .build_conditional_branch(update_comparison, body_block, end_block);
+
+        pyro_statement.builder.position_at_end(body_block);
+
+        for statement in body {
+            recursive_statement_compile!(pyro_statement, statement)?;
+        }
+
+        let addition = pyro_statement.builder.build_int_add(
+            update_temp.into_int_value(),
+            // pyro_statement.context.i64_type().const_int(1, false),
+            update_var_value.into_int_value(),
+            "for loop update",
+        );
+
+        pyro_statement.builder.build_store(condition_var, addition);
+        let final_instruction = pyro_statement
+            .builder
+            .build_unconditional_branch(condition_block);
+
+        pyro_statement.builder.position_at_end(end_block);
+        return Ok(final_instruction.as_any_value_enum());
+    }
+
+    Err(format!("Not a valid for loop statement"))
 }
 
 // TODO: this should definitely be rewritten to be more readable.
@@ -696,6 +897,7 @@ fn binary_op_construction<'a, 'ctx>(
     right: BasicValueEnum<'ctx>,
     operator: Operator,
 ) -> Result<AnyValueEnum<'ctx>, String> {
+    // TODO: Split this into separate functions per operator type maybe?
     let op_type = left.get_type();
     if op_type != right.get_type() {
         return Err(format!("{:?} is not the same type as {:?}", left, right));
@@ -706,10 +908,6 @@ fn binary_op_construction<'a, 'ctx>(
             let op;
             let lhs = left.into_int_value();
             let rhs = right.into_int_value();
-
-            if lhs.get_type().get_bit_width() == 1 || rhs.get_type().get_bit_width() == 1 {
-                return Err(format!("Cannot perform binary operation on a bool"));
-            }
 
             if lhs.get_type().get_bit_width() != rhs.get_type().get_bit_width() {
                 return Err(format!(
@@ -737,6 +935,15 @@ fn binary_op_construction<'a, 'ctx>(
                     op = pyro_statement
                         .builder
                         .build_int_signed_div(lhs, rhs, "intdivision")
+                }
+                Operator::LessThan | Operator::GreaterThan | Operator::EqualTo => {
+                    let predicate = operator_to_int_predicate(operator);
+                    op = pyro_statement.builder.build_int_compare(
+                        predicate,
+                        lhs,
+                        rhs,
+                        "int comparison",
+                    );
                 }
             }
             return Ok(op.as_any_value_enum());
@@ -766,6 +973,16 @@ fn binary_op_construction<'a, 'ctx>(
                     op = pyro_statement
                         .builder
                         .build_float_div(lhs, rhs, "floatdivision")
+                }
+                Operator::LessThan | Operator::GreaterThan | Operator::EqualTo => {
+                    let predicate = operator_to_float_predicate(operator);
+                    let op = pyro_statement.builder.build_float_compare(
+                        predicate,
+                        lhs,
+                        rhs,
+                        "float comparison",
+                    );
+                    return Ok(op.as_any_value_enum());
                 }
             }
             return Ok(op.as_any_value_enum());

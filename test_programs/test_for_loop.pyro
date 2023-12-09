@@ -1,0 +1,11 @@
+func main() {
+  print("Running a for loop from 1 to 10");
+  for (i from 1 to 10) {
+    print("i is currently {integer}", i);
+  }
+
+  print("Running a for loop from 10 to 1");
+  for (i from 10 to 1) {
+    print("i is currently {integer}", i);
+  }
+}

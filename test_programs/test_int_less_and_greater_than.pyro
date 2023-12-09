@@ -1,0 +1,9 @@
+func main() {
+    let a = 3;
+    let b = 5;
+    let c = 3;
+
+    print("{integer} < {integer} => {boolean}", a, b, a < b);
+    print("{integer} > {integer} => {boolean}", a, b, a > b);
+    print("{integer} > {integer} => {boolean}", a, c, a > c);
+}

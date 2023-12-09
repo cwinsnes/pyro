@@ -1,0 +1,8 @@
+func main() {
+    let a = 5;
+    print("a starts at {integer} and will count down by 1", a);
+    while (a > 0) {
+        print("a is currently {integer}", a);
+        a = a - 1;
+    }
+}

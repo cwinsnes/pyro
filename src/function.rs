@@ -8,7 +8,7 @@ use inkwell::module::Module;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType};
 use inkwell::values::{FunctionValue, PointerValue};
 
-use crate::ast::{ASTNode, Variable, VariableType};
+use crate::ast::{ASTNode, Argument, VariableType};
 use crate::common_utils::get_type_from_variable_type;
 use crate::statement;
 
@@ -20,7 +20,7 @@ struct PyroFunction<'a, 'ctx> {
     class_fields: &'a mut HashMap<String, HashMap<String, u32>>,
 
     identifier: String,
-    arguments: Vec<Variable>,
+    arguments: Vec<Argument>,
     body: Vec<ASTNode>,
     return_type: VariableType,
     variables: HashMap<String, PointerValue<'ctx>>,
