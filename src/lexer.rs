@@ -27,7 +27,7 @@ use crate::error::CompilerError;
 use crate::error::CompilerErrorType::LexerError;
 
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum Token {
+pub(crate) enum TokenType {
     // Keywords
     Func,
     Let,
@@ -80,28 +80,55 @@ pub(crate) enum Token {
 }
 
 lazy_static! {
-    static ref KEYWORDS: HashMap<&'static str, Token> = {
+    static ref KEYWORDS: HashMap<&'static str, TokenType> = {
         let mut map = HashMap::new();
-        map.insert("let", Token::Let);
-        map.insert("func", Token::Func);
-        map.insert("integer", Token::Integer);
-        map.insert("float", Token::Float);
-        map.insert("return", Token::Return);
-        map.insert("string", Token::String);
-        map.insert("boolean", Token::Boolean);
-        map.insert("destroy", Token::Destroy);
-        map.insert("create", Token::Create);
-        map.insert("if", Token::If);
-        map.insert("from", Token::From);
-        map.insert("to", Token::To);
-        map.insert("else", Token::Else);
-        map.insert("for", Token::For);
-        map.insert("while", Token::While);
-        map.insert("true", Token::BooleanLiteral(true));
-        map.insert("false", Token::BooleanLiteral(false));
-        map.insert("class", Token::Class);
+        map.insert("let", TokenType::Let);
+        map.insert("func", TokenType::Func);
+        map.insert("integer", TokenType::Integer);
+        map.insert("float", TokenType::Float);
+        map.insert("return", TokenType::Return);
+        map.insert("string", TokenType::String);
+        map.insert("boolean", TokenType::Boolean);
+        map.insert("destroy", TokenType::Destroy);
+        map.insert("create", TokenType::Create);
+        map.insert("if", TokenType::If);
+        map.insert("from", TokenType::From);
+        map.insert("to", TokenType::To);
+        map.insert("else", TokenType::Else);
+        map.insert("for", TokenType::For);
+        map.insert("while", TokenType::While);
+        map.insert("true", TokenType::BooleanLiteral(true));
+        map.insert("false", TokenType::BooleanLiteral(false));
+        map.insert("class", TokenType::Class);
         map
     };
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct Token {
+    pub token_type: TokenType,
+    pub line_number: u64,
+}
+
+impl Token {
+    pub fn new(token_type: TokenType, line_number: u64) -> Self {
+        Self {
+            token_type,
+            line_number,
+        }
+    }
+}
+
+impl PartialEq<TokenType> for Token {
+    fn eq(&self, other: &TokenType) -> bool {
+        self.token_type == *other
+    }
+}
+
+impl PartialEq<Token> for TokenType {
+    fn eq(&self, other: &Token) -> bool {
+        *self == other.token_type
+    }
 }
 
 /// Lexer for the simple Pyro programming language.
@@ -153,7 +180,9 @@ impl<'a> Lexer<'a> {
     /// Will continue scanning until a non-decimal number value is
     /// encountered in the sequence and return the number
     /// represented by the consumed input.
-    fn scan_number(&mut self) -> Result<Token, CompilerError> {
+    ///
+    /// Returns the number as a TokenType.
+    fn scan_number_type(&mut self) -> Result<TokenType, CompilerError> {
         let mut number = String::new();
         let mut is_float = false;
         while let Some(&c) = self.input.peek() {
@@ -191,7 +220,7 @@ impl<'a> Lexer<'a> {
                     "Error when scanning float number literal",
                 ));
             }
-            Ok(Token::FloatLiteral(number.unwrap()))
+            Ok(TokenType::FloatLiteral(number.unwrap()))
         } else {
             let number = number.parse::<i64>();
             if number.is_err() {
@@ -201,7 +230,7 @@ impl<'a> Lexer<'a> {
                     "Error when scanning integer literal",
                 ));
             }
-            Ok(Token::IntegerLiteral(number.unwrap()))
+            Ok(TokenType::IntegerLiteral(number.unwrap()))
         }
     }
 
@@ -286,88 +315,88 @@ impl<'a> Lexer<'a> {
                     continue;
                 }
                 '0'..='9' => {
-                    return_token = self.scan_number()?;
+                    return_token = self.scan_number_type()?;
                 }
                 'a'..='z' | 'A'..='Z' => {
                     let identifier = self.scan_identifier();
-                    if let Some(token) = KEYWORDS.get(&identifier[..]) {
-                        return_token = token.clone();
+                    if let Some(token_type) = KEYWORDS.get(&identifier[..]) {
+                        return_token = token_type.clone();
                     } else {
-                        return_token = Token::Identifier(identifier);
+                        return_token = TokenType::Identifier(identifier);
                     }
                 }
                 '"' => {
                     let string = self.scan_string()?;
-                    return_token = Token::StringLiteral(string);
+                    return_token = TokenType::StringLiteral(string);
                 }
                 '+' => {
                     self.input.next();
-                    return_token = Token::Plus;
+                    return_token = TokenType::Plus;
                 }
                 '-' => {
                     self.input.next();
-                    return_token = Token::Minus;
+                    return_token = TokenType::Minus;
                 }
                 '*' => {
                     self.input.next();
-                    return_token = Token::Asterisk;
+                    return_token = TokenType::Asterisk;
                 }
                 '/' => {
                     self.input.next();
-                    return_token = Token::Slash;
+                    return_token = TokenType::Slash;
                 }
                 '=' => {
                     self.input.next();
                     if self.input.peek() == Some(&'=') {
                         self.input.next();
-                        return_token = Token::EqualTo;
+                        return_token = TokenType::EqualTo;
                     } else {
-                        return_token = Token::EqualSign;
+                        return_token = TokenType::EqualSign;
                     }
                 }
                 '(' => {
                     self.input.next();
-                    return_token = Token::OpenParen;
+                    return_token = TokenType::OpenParen;
                 }
                 '[' => {
                     self.input.next();
-                    return_token = Token::OpenBracket;
+                    return_token = TokenType::OpenBracket;
                 }
                 ']' => {
                     self.input.next();
-                    return_token = Token::CloseBracket;
+                    return_token = TokenType::CloseBracket;
                 }
                 ')' => {
                     self.input.next();
-                    return_token = Token::CloseParen;
+                    return_token = TokenType::CloseParen;
                 }
                 '{' => {
                     self.input.next();
-                    return_token = Token::OpenBrace;
+                    return_token = TokenType::OpenBrace;
                 }
                 ',' => {
                     self.input.next();
-                    return_token = Token::Comma;
+                    return_token = TokenType::Comma;
                 }
                 '}' => {
                     self.input.next();
-                    return_token = Token::CloseBrace;
+                    return_token = TokenType::CloseBrace;
                 }
                 ';' => {
                     self.input.next();
-                    return_token = Token::SemiColon;
+                    return_token = TokenType::SemiColon;
                 }
                 '>' => {
                     self.input.next();
-                    return_token = Token::GreaterThan;
+                    return_token = TokenType::GreaterThan;
                 }
                 '<' => {
                     self.input.next();
-                    return_token = Token::LessThan;
+                    return_token = TokenType::LessThan;
                 }
                 '.' => {
                     self.input.next();
-                    return_token = Token::Dot;
+                    return_token = TokenType::Dot;
                 }
                 _ => {
                     return Err(CompilerError::new(
@@ -377,10 +406,10 @@ impl<'a> Lexer<'a> {
                     ));
                 }
             }
-            return Ok(return_token);
+            return Ok(Token::new(return_token, self.current_line));
         }
 
-        Ok(Token::Eof)
+        Ok(Token::new(TokenType::Eof, self.current_line))
     }
 }
 
@@ -394,13 +423,13 @@ impl<'a> Iterator for Lexer<'a> {
             return None;
         }
         let token = self.next_token();
-        match token {
-            Ok(Token::Eof) => {
+        if let Ok(ref some_token) = token {
+            if some_token.token_type == TokenType::Eof {
                 self.eof = true;
-                Some(token)
             }
-            _ => Some(token),
         }
+
+        Some(token)
     }
 }
 
@@ -417,246 +446,246 @@ mod tests {
     fn test_let_token() {
         let mut lexer = lexer_from_str("let");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Let);
+        assert_eq!(token, TokenType::Let);
     }
 
     #[test]
     fn test_if_token() {
         let mut lexer = lexer_from_str("if");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::If);
+        assert_eq!(token, TokenType::If);
     }
 
     #[test]
     fn test_else_token() {
         let mut lexer = lexer_from_str("else");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Else);
+        assert_eq!(token, TokenType::Else);
     }
 
     #[test]
     fn test_for_token() {
         let mut lexer = lexer_from_str("for");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::For);
+        assert_eq!(token, TokenType::For);
     }
 
     #[test]
     fn test_while_token() {
         let mut lexer = lexer_from_str("while");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::While);
+        assert_eq!(token, TokenType::While);
     }
 
     #[test]
     fn test_comment_text() {
         let mut lexer = lexer_from_str("# foo bar");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Eof);
+        assert_eq!(token, TokenType::Eof);
     }
 
     #[test]
     fn test_comment_after_expression() {
         let mut lexer = lexer_from_str("foo # bar");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Identifier("foo".to_string()));
+        assert_eq!(token, TokenType::Identifier("foo".to_string()));
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Eof);
+        assert_eq!(token, TokenType::Eof);
     }
 
     #[test]
     fn test_func_token() {
         let mut lexer = lexer_from_str("func");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Func);
+        assert_eq!(token, TokenType::Func);
     }
 
     #[test]
     fn test_identifier_token() {
         let mut lexer = lexer_from_str("foo");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Identifier("foo".to_string()));
+        assert_eq!(token, TokenType::Identifier("foo".to_string()));
     }
 
     #[test]
     fn test_integer_token() {
         let mut lexer = lexer_from_str("integer");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Integer);
+        assert_eq!(token, TokenType::Integer);
     }
 
     #[test]
     fn test_string_literal_token() {
         let mut lexer = lexer_from_str("\"foo\"");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::StringLiteral("foo".to_string()));
+        assert_eq!(token, TokenType::StringLiteral("foo".to_string()));
     }
 
     #[test]
     fn test_newline_string_literal_toke() {
         let mut lexer = lexer_from_str("\"foo\\nbar\"");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::StringLiteral("foo\nbar".to_string()));
+        assert_eq!(token, TokenType::StringLiteral("foo\nbar".to_string()));
     }
 
     #[test]
     fn test_tab_string_literal_token() {
         let mut lexer = lexer_from_str("\"foo\\tbar\"");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::StringLiteral("foo\tbar".to_string()));
+        assert_eq!(token, TokenType::StringLiteral("foo\tbar".to_string()));
     }
 
     #[test]
     fn test_backslash_string_literal_token() {
         let mut lexer = lexer_from_str("\"foo\\\\bar\"");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::StringLiteral("foo\\bar".to_string()));
+        assert_eq!(token, TokenType::StringLiteral("foo\\bar".to_string()));
     }
 
     #[test]
     fn test_number_literal_token() {
         let mut lexer = lexer_from_str("42");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::IntegerLiteral(42));
+        assert_eq!(token, TokenType::IntegerLiteral(42));
     }
 
     #[test]
     fn test_floating_point_literal_token() {
         let mut lexer = lexer_from_str("42.42");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::FloatLiteral(42.42));
+        assert_eq!(token, TokenType::FloatLiteral(42.42));
     }
 
     #[test]
     fn test_plus_token() {
         let mut lexer = lexer_from_str("+");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Plus);
+        assert_eq!(token, TokenType::Plus);
     }
 
     #[test]
     fn test_minus_token() {
         let mut lexer = lexer_from_str("-");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Minus);
+        assert_eq!(token, TokenType::Minus);
     }
 
     #[test]
     fn test_asterisk_token() {
         let mut lexer = lexer_from_str("*");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Asterisk);
+        assert_eq!(token, TokenType::Asterisk);
     }
 
     #[test]
     fn test_slash_token() {
         let mut lexer = lexer_from_str("/");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Slash);
+        assert_eq!(token, TokenType::Slash);
     }
 
     #[test]
     fn test_assignment_token() {
         let mut lexer = lexer_from_str("=");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::EqualSign);
+        assert_eq!(token, TokenType::EqualSign);
     }
 
     #[test]
     fn test_open_paren_token() {
         let mut lexer = lexer_from_str("(");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::OpenParen);
+        assert_eq!(token, TokenType::OpenParen);
     }
 
     #[test]
     fn test_close_paren_token() {
         let mut lexer = lexer_from_str(")");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::CloseParen);
+        assert_eq!(token, TokenType::CloseParen);
     }
 
     #[test]
     fn test_open_bracket_token() {
         let mut lexer = lexer_from_str("[");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::OpenBracket);
+        assert_eq!(token, TokenType::OpenBracket);
     }
 
     #[test]
     fn test_close_bracket_token() {
         let mut lexer = lexer_from_str("]");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::CloseBracket);
+        assert_eq!(token, TokenType::CloseBracket);
     }
 
     #[test]
     fn test_open_brace_token() {
         let mut lexer = lexer_from_str("{");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::OpenBrace);
+        assert_eq!(token, TokenType::OpenBrace);
     }
 
     #[test]
     fn test_close_brace_token() {
         let mut lexer = lexer_from_str("}");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::CloseBrace);
+        assert_eq!(token, TokenType::CloseBrace);
     }
 
     #[test]
     fn test_semi_colon_token() {
         let mut lexer = lexer_from_str(";");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::SemiColon);
+        assert_eq!(token, TokenType::SemiColon);
     }
 
     #[test]
     fn test_dot_token() {
         let mut lexer = lexer_from_str(".");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Dot);
+        assert_eq!(token, TokenType::Dot);
     }
 
     #[test]
     fn test_comma_token() {
         let mut lexer = lexer_from_str(",");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Comma);
+        assert_eq!(token, TokenType::Comma);
     }
 
     #[test]
     fn test_greater_than_token() {
         let mut lexer = lexer_from_str(">");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::GreaterThan);
+        assert_eq!(token, TokenType::GreaterThan);
     }
 
     #[test]
     fn test_return_token() {
         let mut lexer = lexer_from_str("return");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Return);
+        assert_eq!(token, TokenType::Return);
     }
 
     #[test]
     fn test_string_token() {
         let mut lexer = lexer_from_str("string");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::String);
+        assert_eq!(token, TokenType::String);
     }
 
     #[test]
     fn test_eof_token() {
         let mut lexer = lexer_from_str("");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::Eof);
+        assert_eq!(token, TokenType::Eof);
     }
 
     #[test]
     fn test_multiple_tokens() {
         let lexer = lexer_from_str("let foo = 42;");
-        let tokens: Result<Vec<Token>, String> = lexer.into_iter().collect();
+        let tokens: Result<Vec<TokenType>, String> = lexer.into_iter().collect();
 
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
@@ -664,12 +693,12 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::Let,
-                Token::Identifier("foo".to_string()),
-                Token::EqualSign,
-                Token::IntegerLiteral(42),
-                Token::SemiColon,
-                Token::Eof
+                TokenType::Let,
+                TokenType::Identifier("foo".to_string()),
+                TokenType::EqualSign,
+                TokenType::IntegerLiteral(42),
+                TokenType::SemiColon,
+                TokenType::Eof
             ]
         );
     }
@@ -685,13 +714,13 @@ mod tests {
     fn test_true_token() {
         let mut lexer = lexer_from_str("true");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::BooleanLiteral(true));
+        assert_eq!(token, TokenType::BooleanLiteral(true));
     }
 
     #[test]
     fn test_false_token() {
         let mut lexer = lexer_from_str("false");
         let token = lexer.next_token().unwrap();
-        assert_eq!(token, Token::BooleanLiteral(false));
+        assert_eq!(token, TokenType::BooleanLiteral(false));
     }
 }

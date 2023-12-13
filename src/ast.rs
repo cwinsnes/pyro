@@ -1,4 +1,6 @@
-use crate::lexer::{Lexer, Token};
+use crate::lexer::{Lexer, Token, TokenType};
+use crate::error::CompilerError;
+use crate::error::CompilerErrorType::ASTError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum VariableType {
@@ -28,18 +30,22 @@ pub(crate) enum Operator {
     EqualTo,
 }
 
-fn token_to_operator(token: &Token) -> Result<Operator, String> {
-    match token {
-        Token::Plus => Ok(Operator::Plus),
-        Token::Minus => Ok(Operator::Minus),
-        Token::Asterisk => Ok(Operator::Multiplication),
-        Token::Slash => Ok(Operator::Division),
+fn token_to_operator(token: &Token) -> Result<Operator, CompilerError> {
+    match token.token_type {
+        TokenType::Plus => Ok(Operator::Plus),
+        TokenType::Minus => Ok(Operator::Minus),
+        TokenType::Asterisk => Ok(Operator::Multiplication),
+        TokenType::Slash => Ok(Operator::Division),
 
-        Token::LessThan => Ok(Operator::LessThan),
-        Token::GreaterThan => Ok(Operator::GreaterThan),
-        Token::EqualTo => Ok(Operator::EqualTo),
+        TokenType::LessThan => Ok(Operator::LessThan),
+        TokenType::GreaterThan => Ok(Operator::GreaterThan),
+        TokenType::EqualTo => Ok(Operator::EqualTo),
 
-        _ => Err(format!("Invalid operator: {:?}", token)),
+        _ => Err(CompilerError::new(
+            ASTError,
+            token.line_number,
+            format!("Invalid operator: {:?}", token),
+        )),
     }
 }
 
@@ -131,11 +137,11 @@ impl<'a> Parser<'a> {
     pub(crate) fn new(lexer: Lexer<'a>) -> Parser<'a> {
         let mut parser = Parser {
             lexer,
-            current_token: Token::NoToken,
-            next_token: Token::NoToken,
+            current_token: Token::new(TokenType::NoToken, 0),
+            next_token: Token::new(TokenType::NoToken, 0),
         };
 
-        let init_parser = |parser: &mut Parser| -> Result<(), String> {
+        let init_parser = |parser: &mut Parser| -> Result<(), CompilerError> {
             parser.advance()?;
             parser.advance()?;
             Ok(())
@@ -150,21 +156,27 @@ impl<'a> Parser<'a> {
 
     /// Parses an entire Program from the input lexer.
     ///
-    /// Returns an `Err` if the input is an invalid pyro program.
-    pub(crate) fn parse_program(&mut self) -> Result<ASTNode, String> {
+    /// Returns a `CompilerError` if the input is an invalid pyro program.
+    pub(crate) fn parse_program(&mut self) -> Result<ASTNode, CompilerError> {
         let mut program_contents = Vec::new();
 
-        while self.next_token != Token::Eof {
-            match self.peek_current() {
-                Token::Class => {
+        while self.peek_ahead().token_type != TokenType::Eof {
+            match self.peek_current().token_type {
+                TokenType::Class => {
                     let class = self.parse_class_declaration()?;
                     program_contents.push(class);
                 }
-                Token::Func => {
+                TokenType::Func => {
                     let function = self.parse_function_declaration()?;
                     program_contents.push(function);
                 }
-                _ => return Err(format!("Unexpected token: {:?}", self.current_token)),
+                _ => {
+                    return Err(CompilerError::new(
+                        ASTError,
+                        self.current_token.line_number,
+                        format!("Unexpected token: {:?}", self.current_token.token_type),
+                    ))
+                }
             }
         }
 
@@ -172,33 +184,38 @@ impl<'a> Parser<'a> {
     }
 
     /// Advance the internal lexer one step.
-    fn advance(&mut self) -> Result<(), String> {
+    fn advance(&mut self) -> Result<(), CompilerError> {
         self.current_token = self.next_token.clone();
         self.next_token = self.lexer.next_token()?;
         Ok(())
     }
 
     /// Expect a specific token and consume it.
-    fn expect(&mut self, expected: Token) -> Result<(), String> {
+    fn expect(&mut self, expected: TokenType) -> Result<(), CompilerError> {
         match self.peek_current() {
             token if token == expected => self.advance(),
-            token => Err(format!(
-                "Expected token {:?} but received {:?}",
-                expected, token
+            token => Err(CompilerError::new(
+                ASTError,
+                token.line_number,
+                format!(
+                    "Expected token {:?} but received {:?}",
+                    expected, token.token_type
+                ),
             )),
         }
     }
 
     /// Expect an identifier Token, consume it, and return the identifier
-    fn expect_identifier(&mut self) -> Result<String, String> {
-        match self.peek_current() {
-            Token::Identifier(identifier) => {
+    fn expect_identifier(&mut self) -> Result<String, CompilerError> {
+        match self.peek_current().token_type {
+            TokenType::Identifier(identifier) => {
                 self.advance()?;
                 Ok(identifier)
             }
-            token => Err(format!(
-                "Expected identifier but received token {:?}",
-                token
+            token_type => Err(CompilerError::new(
+                ASTError,
+                self.current_token.line_number,
+                format!("Expected identifier but received token {:?}", token_type),
             )),
         }
     }
@@ -208,31 +225,35 @@ impl<'a> Parser<'a> {
     ///
     /// Returns the VariableType-representation of the encountered type.
     /// Returns an `Err` if any other kind of token was encountered.
-    fn expect_variable_type(&mut self) -> Result<VariableType, String> {
-        match self.peek_current() {
-            Token::Integer => {
+    fn expect_variable_type(&mut self) -> Result<VariableType, CompilerError> {
+        match self.peek_current().token_type {
+            TokenType::Integer => {
                 self.advance()?;
                 Ok(VariableType::Integer)
             }
-            Token::Float => {
+            TokenType::Float => {
                 self.advance()?;
                 Ok(VariableType::Float)
             }
-            Token::Boolean => {
+            TokenType::Boolean => {
                 self.advance()?;
                 Ok(VariableType::Boolean)
             }
-            Token::String => {
+            TokenType::String => {
                 self.advance()?;
                 Ok(VariableType::String)
             }
-            Token::Identifier(identifier) => {
+            TokenType::Identifier(identifier) => {
                 self.advance()?;
                 Ok(VariableType::Class(identifier))
             }
-            token => Err(format!(
-                "Expected variable type token but received token {:?}",
-                token
+            token_type => Err(CompilerError::new(
+                ASTError,
+                self.current_token.line_number,
+                format!(
+                    "Expected variable type token but received token {:?}",
+                    token_type
+                ),
             )),
         }
     }
@@ -241,7 +262,7 @@ impl<'a> Parser<'a> {
     /// return the resulting `Argument`.
     ///
     /// Returns `Err` if an `Argument` could not be constructed.
-    fn expect_variable(&mut self) -> Result<Argument, String> {
+    fn expect_variable(&mut self) -> Result<Argument, CompilerError> {
         let argument_type = self.expect_variable_type()?;
         let identifier = self.expect_identifier()?;
 
@@ -253,7 +274,7 @@ impl<'a> Parser<'a> {
 
     /// Assert that a specific token type is the current token in the sequence
     /// but do not consume it.
-    fn check(&self, expected: Token) -> bool {
+    fn check(&self, expected: TokenType) -> bool {
         self.current_token == expected
     }
 
@@ -267,14 +288,14 @@ impl<'a> Parser<'a> {
         self.next_token.clone()
     }
 
-    fn parse_class_declaration(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::Class)?;
+    fn parse_class_declaration(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::Class)?;
         let identifier = self.expect_identifier()?;
-        self.expect(Token::OpenBrace)?;
+        self.expect(TokenType::OpenBrace)?;
 
         let fields = self.parse_class_variables()?;
         let methods = Vec::new();
-        self.expect(Token::CloseBrace)?;
+        self.expect(TokenType::CloseBrace)?;
 
         return Ok(ASTNode::ClassDeclaration {
             identifier,
@@ -283,20 +304,20 @@ impl<'a> Parser<'a> {
         });
     }
 
-    fn parse_class_variables(&mut self) -> Result<Vec<Argument>, String> {
+    fn parse_class_variables(&mut self) -> Result<Vec<Argument>, CompilerError> {
         let mut variables = Vec::new();
 
-        if self.check(Token::CloseBrace) || self.check(Token::Func) {
+        if self.check(TokenType::CloseBrace) || self.check(TokenType::Func) {
             return Ok(variables);
         }
 
         loop {
             let variable = self.expect_variable()?;
             variables.push(variable);
-            self.expect(Token::SemiColon)?;
+            self.expect(TokenType::SemiColon)?;
 
-            match self.peek_current() {
-                Token::Func | Token::CloseBrace => {
+            match self.peek_current().token_type {
+                TokenType::Func | TokenType::CloseBrace => {
                     return Ok(variables);
                 }
                 _ => continue,
@@ -304,13 +325,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_object_access(&mut self) -> Result<ASTNode, String> {
+    fn parse_object_access(&mut self) -> Result<ASTNode, CompilerError> {
         let object_identifier = self.expect_identifier()?;
-        self.expect(Token::Dot)?;
+        self.expect(TokenType::Dot)?;
         let field_identifier = self.expect_identifier()?;
 
-        if self.peek_current() == Token::EqualSign {
-            self.expect(Token::EqualSign)?;
+        if self.peek_current() == TokenType::EqualSign {
+            self.expect(TokenType::EqualSign)?;
             return Ok(ASTNode::ObjectFieldAssignment {
                 object_identifier,
                 field_identifier,
@@ -327,8 +348,8 @@ impl<'a> Parser<'a> {
     /// Parse a function declaration from the Tokens generated by the lexer.
     ///
     /// Return `Err` if a valid function couldn't be parsed.
-    fn parse_function_declaration(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::Func)?;
+    fn parse_function_declaration(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::Func)?;
         let identifier = self.expect_identifier()?;
         let argument_list = self.parse_argument_list()?;
         let variable_type = self.parse_return_type()?;
@@ -343,11 +364,11 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse function argument list enclosed by parenthesis.
-    fn parse_argument_list(&mut self) -> Result<Vec<Argument>, String> {
+    fn parse_argument_list(&mut self) -> Result<Vec<Argument>, CompilerError> {
         let mut arguments = Vec::new();
 
-        self.expect(Token::OpenParen)?;
-        if self.check(Token::CloseParen) {
+        self.expect(TokenType::OpenParen)?;
+        if self.check(TokenType::CloseParen) {
             self.advance()?;
             return Ok(arguments);
         }
@@ -355,19 +376,23 @@ impl<'a> Parser<'a> {
         loop {
             let argument = self.expect_variable()?;
             arguments.push(argument);
-            match self.peek_current() {
-                Token::Comma => {
+            match self.peek_current().token_type {
+                TokenType::Comma => {
                     self.advance()?;
                     continue;
                 }
-                Token::CloseParen => {
+                TokenType::CloseParen => {
                     self.advance()?;
                     return Ok(arguments);
                 }
                 other => {
-                    return Err(format!(
-                        "Expected comma (',') or closing paren (')') but got {:?}",
-                        other
+                    return Err(CompilerError::new(
+                        ASTError,
+                        self.peek_current().line_number,
+                        format!(
+                            "Expected comma (',') or closing paren (')') but got {:?}",
+                            other
+                        ),
                     ));
                 }
             }
@@ -376,9 +401,9 @@ impl<'a> Parser<'a> {
 
     // Parse the (optional) return type of the currently parsed function, indicating
     // which VariableType will be returned by the function.
-    fn parse_return_type(&mut self) -> Result<VariableType, String> {
-        match self.peek_current() {
-            Token::GreaterThan => {
+    fn parse_return_type(&mut self) -> Result<VariableType, CompilerError> {
+        match self.peek_current().token_type {
+            TokenType::GreaterThan => {
                 self.advance()?;
                 self.expect_variable_type()
             }
@@ -387,11 +412,11 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a statement list enclosed by braces.
-    fn parse_statement_list(&mut self) -> Result<Vec<ASTNode>, String> {
+    fn parse_statement_list(&mut self) -> Result<Vec<ASTNode>, CompilerError> {
         let mut statements = Vec::new();
 
-        self.expect(Token::OpenBrace)?;
-        if self.check(Token::CloseBrace) {
+        self.expect(TokenType::OpenBrace)?;
+        if self.check(TokenType::CloseBrace) {
             self.advance()?;
             return Ok(statements);
         }
@@ -399,13 +424,17 @@ impl<'a> Parser<'a> {
         loop {
             let statement = self.parse_statement()?;
             statements.push(statement);
-            match self.peek_current() {
-                Token::CloseBrace => {
+            match self.peek_current().token_type {
+                TokenType::CloseBrace => {
                     self.advance()?;
                     return Ok(statements);
                 }
-                Token::Eof => {
-                    return Err("Reached EOF while scanning for closing brace ('}}')".to_string());
+                TokenType::Eof => {
+                    return Err(CompilerError::new(
+                        ASTError,
+                        self.peek_current().line_number,
+                        "Reached EOF while scanning for closing brace ('}}')".to_string(),
+                    ));
                 }
                 _other => continue,
             }
@@ -413,10 +442,10 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a return statement capable of returning any expression.
-    fn parse_return_statement(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::Return)?;
+    fn parse_return_statement(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::Return)?;
         let expression = self.parse_expression()?;
-        self.expect(Token::SemiColon)?;
+        self.expect(TokenType::SemiColon)?;
 
         Ok(ASTNode::ReturnStatement(Box::new(expression)))
     }
@@ -424,18 +453,18 @@ impl<'a> Parser<'a> {
     /// Parse an if statement with an optional else branch.
     ///
     /// Returns `Err` if the If statement could not be parsed.
-    fn parse_if_statement(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::If)?;
-        self.expect(Token::OpenParen)?;
+    fn parse_if_statement(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::If)?;
+        self.expect(TokenType::OpenParen)?;
 
         let condition = self.parse_expression()?;
 
-        self.expect(Token::CloseParen)?;
+        self.expect(TokenType::CloseParen)?;
         let true_statements = self.parse_statement_list()?;
 
         let else_statements;
-        if self.peek_current() == Token::Else {
-            self.expect(Token::Else)?;
+        if self.peek_current() == TokenType::Else {
+            self.expect(TokenType::Else)?;
             else_statements = self.parse_statement_list()?;
         } else {
             else_statements = Vec::new();
@@ -448,19 +477,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_for_loop(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::For)?;
-        self.expect(Token::OpenParen)?;
+    fn parse_for_loop(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::For)?;
+        self.expect(TokenType::OpenParen)?;
 
         let identifier = self.expect_identifier()?;
 
-        self.expect(Token::From)?;
+        self.expect(TokenType::From)?;
         let range_left = self.parse_expression()?;
 
-        self.expect(Token::To)?;
+        self.expect(TokenType::To)?;
         let range_right = self.parse_expression()?;
 
-        self.expect(Token::CloseParen)?;
+        self.expect(TokenType::CloseParen)?;
         let statements = self.parse_statement_list()?;
 
         Ok(ASTNode::ForStatement {
@@ -470,13 +499,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_while_loop(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::While)?;
-        self.expect(Token::OpenParen)?;
+    fn parse_while_loop(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::While)?;
+        self.expect(TokenType::OpenParen)?;
 
         let condition = self.parse_expression()?;
 
-        self.expect(Token::CloseParen)?;
+        self.expect(TokenType::CloseParen)?;
         let statements = self.parse_statement_list()?;
 
         Ok(ASTNode::WhileStatement {
@@ -489,63 +518,67 @@ impl<'a> Parser<'a> {
     ///
     /// Returns Err if any of the statements was unable to be parsed or if the
     /// end of file was reached while parsing.
-    fn parse_statement(&mut self) -> Result<ASTNode, String> {
+    fn parse_statement(&mut self) -> Result<ASTNode, CompilerError> {
         let return_node;
-        match self.peek_current() {
-            Token::Let => {
+        match self.peek_current().token_type {
+            TokenType::Let => {
                 return_node = self.parse_let_statement()?;
             }
-            Token::Return => {
+            TokenType::Return => {
                 return_node = self.parse_return_statement()?;
             }
-            Token::Destroy => {
+            TokenType::Destroy => {
                 return_node = self.parse_destroy_statement()?;
             }
-            Token::If => {
+            TokenType::If => {
                 return_node = self.parse_if_statement()?;
             }
-            Token::For => {
+            TokenType::For => {
                 return_node = self.parse_for_loop()?;
             }
-            Token::While => {
+            TokenType::While => {
                 return_node = self.parse_while_loop()?;
             }
-            Token::Eof => {
-                return Err("Reached EOF while parsing statements".to_string());
+            TokenType::Eof => {
+                return Err(CompilerError::new(
+                    ASTError,
+                    self.peek_current().line_number,
+                    "Reached EOF while parsing statements".to_string(),
+                ));
             }
             _ => {
                 return_node = self.parse_expression()?;
-                self.expect(Token::SemiColon)?;
+                self.expect(TokenType::SemiColon)?;
             }
         }
         Ok(return_node)
     }
 
-    fn parse_let_statement(&mut self) -> Result<ASTNode, String> {
+    fn parse_let_statement(&mut self) -> Result<ASTNode, CompilerError> {
         let identifier;
         let expression;
 
-        self.expect(Token::Let)?;
+        self.expect(TokenType::Let)?;
         identifier = self.expect_identifier()?;
-        self.expect(Token::EqualSign)?;
-        if self.peek_current() == Token::Create {
+        self.expect(TokenType::EqualSign)?;
+        if self.peek_current().token_type == TokenType::Create {
             expression = self.parse_create()?;
         } else {
             expression = self.parse_expression()?;
         }
-        self.expect(Token::SemiColon)?;
+        self.expect(TokenType::SemiColon)?;
 
         Ok(ASTNode::LetDeclaration(identifier, Box::new(expression)))
     }
 
-    fn parse_array_access(&mut self) -> Result<ASTNode, String> {
+    fn parse_array_access(&mut self) -> Result<ASTNode, CompilerError> {
         let identifier = self.expect_identifier()?;
-        self.expect(Token::OpenBracket)?;
+        self.expect(TokenType::OpenBracket)?;
         let index = self.parse_expression()?;
-        self.expect(Token::CloseBracket)?;
+        self.expect(TokenType::CloseBracket)?;
 
-        if self.peek_current() == Token::EqualSign {
-            self.expect(Token::EqualSign)?;
+        if self.peek_current() == TokenType::EqualSign {
+            self.expect(TokenType::EqualSign)?;
             let value = self.parse_expression()?;
 
             return Ok(ASTNode::ArrayAssignment(
@@ -558,55 +591,59 @@ impl<'a> Parser<'a> {
         Ok(ASTNode::ArrayAccess(identifier, Box::new(index)))
     }
 
-    fn parse_variable_assignment(&mut self) -> Result<ASTNode, String> {
+    fn parse_variable_assignment(&mut self) -> Result<ASTNode, CompilerError> {
         let identifier = self.expect_identifier()?;
-        self.expect(Token::EqualSign)?;
+        self.expect(TokenType::EqualSign)?;
         let value = self.parse_expression()?;
         Ok(ASTNode::VariableAssignment(identifier, Box::new(value)))
     }
 
     /// Parse a full call to a function, with function name and arguments.
-    fn parse_function_call(&mut self) -> Result<ASTNode, String> {
+    fn parse_function_call(&mut self) -> Result<ASTNode, CompilerError> {
         // TODO: This is VERY similar to parse_argument_list
         // TODO: Would make sense to join the two somehow.
         let mut argument_list = Vec::new();
 
         let identifier = self.expect_identifier()?;
-        self.expect(Token::OpenParen)?;
-        if self.check(Token::CloseParen) {
+        self.expect(TokenType::OpenParen)?;
+        if self.check(TokenType::CloseParen) {
             self.advance()?;
             return Ok(ASTNode::FunctionCall(identifier, argument_list));
         }
         loop {
             let argument = self.parse_expression()?;
             argument_list.push(argument);
-            match self.peek_current() {
-                Token::Comma => {
+            match self.peek_current().token_type {
+                TokenType::Comma => {
                     self.advance()?;
                     continue;
                 }
-                Token::CloseParen => {
+                TokenType::CloseParen => {
                     self.advance()?;
                     return Ok(ASTNode::FunctionCall(identifier, argument_list));
                 }
                 other => {
-                    return Err(format!(
-                        "Expected comma (',') or closing paren (')') but got {:?}",
-                        other
+                    return Err(CompilerError::new(
+                        ASTError,
+                        self.peek_current().line_number,
+                        format!(
+                            "Expected comma (',') or closing paren (')') but got {:?}",
+                            other
+                        ),
                     ));
                 }
             }
         }
     }
 
-    fn parse_create(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::Create)?;
+    fn parse_create(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::Create)?;
         let variable_type = self.expect_variable_type()?;
 
-        if self.peek_ahead() == Token::OpenBracket {
-            self.expect(Token::OpenBracket)?;
+        if self.peek_ahead() == TokenType::OpenBracket {
+            self.expect(TokenType::OpenBracket)?;
             let size = self.parse_expression()?;
-            self.expect(Token::CloseBracket)?;
+            self.expect(TokenType::CloseBracket)?;
 
             return Ok(ASTNode::ArrayAllocation {
                 variable_type,
@@ -617,22 +654,22 @@ impl<'a> Parser<'a> {
         Ok(ASTNode::ObjectAllocation(variable_type))
     }
 
-    fn parse_destroy_statement(&mut self) -> Result<ASTNode, String> {
-        self.expect(Token::Destroy)?;
+    fn parse_destroy_statement(&mut self) -> Result<ASTNode, CompilerError> {
+        self.expect(TokenType::Destroy)?;
         let variable_name = self.expect_identifier()?;
-        self.expect(Token::SemiColon)?;
+        self.expect(TokenType::SemiColon)?;
         Ok(ASTNode::DestroyVariable(variable_name))
     }
 
-    fn parse_identifier(&mut self) -> Result<ASTNode, String> {
+    fn parse_identifier(&mut self) -> Result<ASTNode, CompilerError> {
         let return_node: ASTNode;
-        if self.peek_ahead() == Token::OpenParen {
+        if self.peek_ahead() == TokenType::OpenParen {
             return_node = self.parse_function_call()?;
-        } else if self.peek_ahead() == Token::OpenBracket {
+        } else if self.peek_ahead() == TokenType::OpenBracket {
             return_node = self.parse_array_access()?;
-        } else if self.peek_ahead() == Token::EqualSign {
+        } else if self.peek_ahead() == TokenType::EqualSign {
             return_node = self.parse_variable_assignment()?;
-        } else if self.peek_ahead() == Token::Dot {
+        } else if self.peek_ahead() == TokenType::Dot {
             return_node = self.parse_object_access()?
         } else {
             let identifier = self.expect_identifier()?;
@@ -642,37 +679,43 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse an expression from the input tokens.
-    fn parse_expression(&mut self) -> Result<ASTNode, String> {
+    fn parse_expression(&mut self) -> Result<ASTNode, CompilerError> {
         let mut left;
-        match self.peek_current() {
-            Token::IntegerLiteral(literal) => {
+        match self.peek_current().token_type {
+            TokenType::IntegerLiteral(literal) => {
                 self.advance()?;
                 left = ASTNode::IntegerLiteral(literal);
             }
-            Token::FloatLiteral(literal) => {
+            TokenType::FloatLiteral(literal) => {
                 self.advance()?;
                 left = ASTNode::FloatLiteral(literal);
             }
-            Token::BooleanLiteral(literal) => {
+            TokenType::BooleanLiteral(literal) => {
                 self.advance()?;
                 left = ASTNode::BooleanLiteral(literal);
             }
-            Token::StringLiteral(string) => {
+            TokenType::StringLiteral(string) => {
                 self.advance()?;
                 left = ASTNode::StringLiteral(string);
             }
-            Token::Identifier(_) => {
+            TokenType::Identifier(_) => {
                 left = self.parse_identifier()?;
             }
-            other => return Err(format!("Expected expression but got {:?}", other)),
+            other => {
+                return Err(CompilerError::new(
+                    ASTError,
+                    self.peek_current().line_number,
+                    format!("Expected expression but got {:?}", other),
+                ))
+            }
         }
-        if self.check(Token::Plus)
-            || self.check(Token::Minus)
-            || self.check(Token::Asterisk)
-            || self.check(Token::Slash)
-            || self.check(Token::LessThan)
-            || self.check(Token::GreaterThan)
-            || self.check(Token::EqualTo)
+        if self.check(TokenType::Plus)
+            || self.check(TokenType::Minus)
+            || self.check(TokenType::Asterisk)
+            || self.check(TokenType::Slash)
+            || self.check(TokenType::LessThan)
+            || self.check(TokenType::GreaterThan)
+            || self.check(TokenType::EqualTo)
         {
             let operator = token_to_operator(&self.peek_current())?;
             self.advance()?;
