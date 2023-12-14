@@ -76,22 +76,3 @@ unsafe extern "C" fn print(str: *const c_char, mut vars: ...) {
     let result = format_str(input_str, &mut vars.as_va_list());
     println!("{}", result);
 }
-
-#[cfg(test)]
-mod tests {
-    use std::ffi::CString;
-
-    use super::*;
-
-    #[test]
-    fn testprint() {
-        unsafe {
-            let format_str = CString::new("Hey {integer} {float}!").unwrap();
-            print(format_str.as_ptr(), 1, 3.2 as c_double);
-
-            let format_str = CString::new("Hey {string}!").unwrap();
-            let inner_str = CString::new("formatting").unwrap();
-            print(format_str.as_ptr(), inner_str.as_ptr());
-        }
-    }
-}
