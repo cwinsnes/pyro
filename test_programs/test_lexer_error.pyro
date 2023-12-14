@@ -1,0 +1,3 @@
+func main() {
+  let error = 3..2;
+}
