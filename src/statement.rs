@@ -13,7 +13,6 @@ use inkwell::values::{
 };
 
 use crate::ast::{ASTNode, Operator, VariableType};
-use crate::class;
 use crate::common_utils::{
     generate_constant_name, get_type_from_variable_type, into_basic_value_enum,
 };

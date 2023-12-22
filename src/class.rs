@@ -6,8 +6,9 @@ use inkwell::module::Module;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::PointerValue;
 
-use crate::ast::{ASTNode, Argument};
+use crate::ast::{ASTNode, Argument, VariableType};
 use crate::common_utils::get_type_from_variable_type;
+use crate::function::compile_function;
 
 struct PyroClass<'a, 'ctx> {
     context: &'ctx Context,
@@ -19,6 +20,7 @@ struct PyroClass<'a, 'ctx> {
 
     identifier: String,
     fields: Vec<Argument>,
+    methods: Vec<ASTNode>,
 }
 
 pub(crate) fn define_class<'a, 'ctx>(
@@ -46,9 +48,12 @@ pub(crate) fn define_class<'a, 'ctx>(
 
             identifier,
             fields,
+            methods,
         };
 
-        return declare_class(&mut class);
+        let class_type = declare_class(&mut class)?;
+        build_class_methods(&mut class)?;
+        return Ok(class_type);
     }
 
     Err(format!(
@@ -85,4 +90,33 @@ fn declare_class<'a, 'ctx>(class: &mut PyroClass<'a, 'ctx>) -> Result<StructType
         .insert(class.identifier.clone(), current_class_fields);
 
     return Ok(struct_type);
+}
+
+fn build_class_methods<'a, 'ctx>(pyro_class: &mut PyroClass<'a, 'ctx>) -> Result<(), String> {
+    for mut method in pyro_class.methods.clone() {
+        if let ASTNode::FunctionDeclaration {
+            identifier: _,
+            ref mut arguments,
+            return_type: _,
+            body: _,
+        } = method
+        {
+            arguments.insert(
+                0,
+                Argument {
+                    variable_type: VariableType::Class(pyro_class.identifier.clone()),
+                    identifier: "self".into(),
+                },
+            );
+            compile_function(
+                pyro_class.context,
+                pyro_class.module,
+                pyro_class.builder,
+                pyro_class.string_globals,
+                pyro_class.class_fields,
+                method,
+            )?;
+        }
+    }
+    Ok(())
 }

@@ -212,6 +212,10 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 Ok(identifier)
             }
+            TokenType::SelfIdentifier => {
+                self.advance()?;
+                Ok("self".into())
+            }
             token_type => Err(CompilerError::new(
                 ASTError,
                 self.current_token.line_number,
@@ -294,7 +298,13 @@ impl<'a> Parser<'a> {
         self.expect(TokenType::OpenBrace)?;
 
         let fields = self.parse_class_variables()?;
-        let methods = Vec::new();
+        let mut methods = Vec::new();
+
+        while self.peek_current() == TokenType::Func {
+            let method = self.parse_function_declaration()?;
+            methods.push(method);
+        }
+
         self.expect(TokenType::CloseBrace)?;
 
         return Ok(ASTNode::ClassDeclaration {
@@ -337,6 +347,10 @@ impl<'a> Parser<'a> {
                 field_identifier,
                 value: Box::new(self.parse_expression()?),
             });
+        }
+        
+        else if self.peek_current() == TokenType::OpenParen {
+            println!("Method");
         }
 
         Ok(ASTNode::ObjectFieldAccess {
@@ -698,7 +712,7 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 left = ASTNode::StringLiteral(string);
             }
-            TokenType::Identifier(_) => {
+            TokenType::Identifier(_) | TokenType::SelfIdentifier => {
                 left = self.parse_identifier()?;
             }
             other => {

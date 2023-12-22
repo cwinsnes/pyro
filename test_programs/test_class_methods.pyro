@@ -1,0 +1,12 @@
+class A {
+  integer id;
+
+  func test() {
+    print("{integer}", self.id);
+  }
+}
+
+func main() {
+  let a = create A;
+  a.test();
+}

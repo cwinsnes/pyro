@@ -47,6 +47,7 @@ pub(crate) enum TokenType {
     While,
 
     // Identifiers and literals
+    SelfIdentifier,
     Identifier(String),
     IntegerLiteral(i64),
     StringLiteral(String),
@@ -100,6 +101,7 @@ lazy_static! {
         map.insert("true", TokenType::BooleanLiteral(true));
         map.insert("false", TokenType::BooleanLiteral(false));
         map.insert("class", TokenType::Class);
+        map.insert("self", TokenType::SelfIdentifier);
         map
     };
 }
